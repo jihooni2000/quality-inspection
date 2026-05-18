@@ -1,0 +1,2229 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>장학 PUNCH LIST</title>
+    <!-- PWA -->
+    <link rel="manifest" href="/quality-inspection/manifest.json">
+    <meta name="theme-color" content="#c0392b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="장학 PUNCH LIST">
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32x32.png">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0f1923;
+            --surface: #162030;
+            --surface2: #1e2d3d;
+            --surface3: #253545;
+            --border: rgba(255,255,255,0.08);
+            --border-bright: rgba(255,255,255,0.18);
+            --accent: #1a8cff;
+            --accent-glow: rgba(26,140,255,0.25);
+            --danger: #ff4545;
+            --danger-glow: rgba(255,69,69,0.2);
+            --success: #00d68f;
+            --success-glow: rgba(0,214,143,0.2);
+            --warning: #ffaa00;
+            --text-primary: #f0f4f8;       /* ↑ 더 밝고 선명하게 */
+            --text-secondary: #a8bece;     /* ↑ #7a92a8 → 훨씬 밝게 */
+            --text-muted: #6e8898;         /* ↑ #4a6070 → 밝게 */
+            --fs-header: 22px;
+            --fs-title: 20px;
+            --fs-body: 19px;               /* ↑ 16→17px */
+            --fs-sub: 17px;                /* ↑ 14→15px */
+            --fs-small: 15px;              /* ↑ 12→13px */
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "IBM Plex Sans KR", -apple-system, sans-serif;
+            margin: 0; background: var(--primary);
+            height: 100vh; height: 100dvh; overflow: hidden;
+            display: flex; flex-direction: column;
+            font-size: var(--fs-body); color: var(--text-primary);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        header {
+            height: calc(52px + env(safe-area-inset-top));
+            padding-top: env(safe-area-inset-top);
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            padding-left: 16px; padding-right: 16px;
+            font-weight: 600; font-size: var(--fs-header);
+            z-index: 1000; flex-shrink: 0;
+            box-shadow: 0 1px 0 var(--border), 0 4px 24px rgba(0,0,0,0.4);
+        }
+        main { display: flex; flex: 1; overflow: hidden; }
+
+        /* Sidebar Left */
+        #sidebar-left { width: 248px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+        #sidebar-left::-webkit-scrollbar { width: 4px; }
+        #sidebar-left::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+
+        /* Tree */
+        .tree-children { display: none; padding-left: 0; border-left: none; margin-left: 0; }
+        .tree-children.active { display: block; }
+        .tree-node { cursor: pointer; padding: 9px 10px 9px 12px; font-size: var(--fs-sub); display: flex; align-items: center; gap: 6px; color: var(--text-primary); font-weight: 500; transition: background 0.12s, color 0.12s; }
+        .tree-node:hover { background: var(--surface2); color: var(--text-primary); }
+        .tree-item { padding: 7px 10px 7px 12px; cursor: pointer; font-size: var(--fs-sub); border-radius: 6px; margin: 2px 6px; color: var(--text-primary); font-weight: 500; display: flex; align-items: center; gap: 6px; transition: background 0.12s, color 0.12s; }
+        .tree-item:hover { background: var(--surface2); color: var(--text-primary); }
+        .tree-item.selected { background: linear-gradient(90deg, rgba(26,140,255,0.22), rgba(26,140,255,0.08)); color: var(--accent); font-weight: 600; border-left: 2px solid var(--accent); border-radius: 0 6px 6px 0; margin-left: 0; padding-left: 16px; }
+        .tree-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .depth-floor { padding-left: 26px; }
+        .depth-room { padding-left: 42px; }
+        .tree-node.long-active, .tree-item.long-active { background: rgba(26,140,255,0.1); border-radius: 6px; }
+        .tree-node.drag-over { border-top: 2px solid var(--accent); }
+        .tree-node.dragging-node { opacity: 0.35; }
+        .tree-node-inner { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+        .tree-drag-handle { cursor: grab; color: var(--text-muted); font-size: 14px; padding: 0 3px; flex-shrink: 0; user-select: none; touch-action: none; }
+        .tree-drag-handle:active { cursor: grabbing; }
+        .tree-badges { display: flex; align-items: center; gap: 4px; margin-left: auto; flex-shrink: 0; padding-left: 6px; }
+        .tree-badge { min-width: 20px; height: 20px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; padding: 0 5px; box-sizing: border-box; line-height: 1; font-family: "JetBrains Mono", monospace; }
+        .tree-badge.red  { background: var(--danger); box-shadow: 0 1px 6px var(--danger-glow); }
+        .tree-badge.blue { background: var(--accent); box-shadow: 0 1px 6px var(--accent-glow); }
+        .tree-badge.zero { display: none; }
+
+        /* Canvas center */
+        #content-center { flex: 1; overflow: hidden; background: radial-gradient(ellipse at center, #1a2535 0%, #0f1923 70%); position: relative; touch-action: none; }
+        #content-center::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+        #zoom-viewport { width: 100%; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; z-index: 1; }
+        #canvas-container { position: absolute; display: none; box-shadow: 0 8px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transform-origin: 0 0; cursor: grab; border-radius: 2px; }
+        #canvas-container.panning { cursor: grabbing; }
+        #blueprint-display { display: block; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; pointer-events: none; }
+        #pin-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+
+        /* Zoom controls */
+        #zoom-controls { position: absolute; bottom: 20px; right: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 200; }
+        .zoom-btn { width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--border-bright); background: rgba(22,32,48,0.9); backdrop-filter: blur(8px); box-shadow: 0 2px 12px rgba(0,0,0,0.4); font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--text-primary); transition: background 0.15s, color 0.15s; }
+        .zoom-btn:hover { background: var(--surface3); color: var(--text-primary); }
+        .zoom-btn:active { background: var(--accent); color: #fff; }
+        #zoom-level-badge { display: none; position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 200; font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 700; background: rgba(15,25,35,0.7); backdrop-filter: blur(6px); padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border-bright); pointer-events: none; font-family: "JetBrains Mono", monospace; }
+
+        /* Pins */
+        .pin { pointer-events: all; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+        .pin { position: absolute; width: 32px; height: 32px; border: 2.5px solid rgba(255,255,255,0.9); border-radius: 50%; color: white; text-align: center; font-size: 14px; font-weight: 700; line-height: 27px; transform: translate(-50%, -50%); cursor: pointer; z-index: 100; font-family: "JetBrains Mono", monospace; transition: transform 0.15s; }
+        .pin:hover { transform: translate(-50%, -50%) scale(1.2); }
+        .pin-red { background: var(--danger); box-shadow: 0 3px 12px var(--danger-glow), 0 0 0 3px rgba(255,69,69,0.2); }
+        .pin-blue { background: var(--accent); box-shadow: 0 3px 12px var(--accent-glow), 0 0 0 3px rgba(26,140,255,0.2); }
+
+        /* Sidebar Right */
+        #sidebar-right { width: 248px; background: var(--surface); border-left: 1px solid var(--border); overflow-y: auto; flex-shrink: 0; }
+        #sidebar-right::-webkit-scrollbar { width: 4px; }
+        #sidebar-right::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+        .summary-item { padding: 12px 14px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: var(--fs-sub); color: var(--text-primary); transition: background 0.12s; }
+        .summary-item:hover { background: var(--surface2); color: var(--text-primary); }
+
+        /* Modal overlay */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 1100; }
+
+        /* Modal sheet */
+        .modal { display: none; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border-bright); width: 100%; max-width: 1000px; border-radius: 20px 20px 0 0; z-index: 1200; flex-direction: column; animation: slideUp 0.3s cubic-bezier(0.34,1.2,0.64,1); overflow: hidden; box-shadow: 0 -8px 60px rgba(0,0,0,0.5); }
+        @keyframes slideUp { from { transform: translateX(-50%) translateY(100%); } to { transform: translateX(-50%) translateY(0); } }
+        .report-modal { height: 92vh; }
+        .modal-body { display: flex; flex-direction: column; height: 100%; }
+
+        /* 2단 비교 */
+        .comparison-container { display: flex; flex: 1; overflow: hidden; border-top: 1px solid var(--border); }
+        .comparison-column { flex: 1; display: flex; flex-direction: column; border-right: 1px solid var(--border); }
+        .comparison-column:last-child { border-right: none; }
+        .column-header { padding: 14px 16px; background: var(--primary); position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+        .column-title { font-size: var(--fs-body); font-weight: 700; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .column-info { font-size: calc(var(--fs-sub) + 1px); color: #ffffff; min-height: 36px; line-height: 1.6; white-space: pre-wrap; font-weight: 500; }
+        .photo-scroll-area { flex: 1; overflow-y: auto; padding: 12px; background: var(--primary); touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+        .photo-scroll-area::-webkit-scrollbar { width: 4px; }
+        .photo-scroll-area::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+        .photo-list { display: flex; flex-direction: column; gap: 8px; touch-action: pan-y; }
+        .photo-list img { width: 100%; border-radius: 8px; border: 1px solid var(--border-bright); object-fit: cover; cursor: pointer; touch-action: pan-y; transition: border-color 0.15s; }
+        .photo-list img:hover { border-color: var(--accent); }
+
+        /* Lightbox */
+        #lightbox { display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.95); justify-content: center; align-items: center; }
+        #lightbox.open { display: flex; }
+        #lightbox-img { max-width: 95vw; max-height: 90vh; border-radius: 6px; object-fit: contain; transform-origin: center center; user-select: none; -webkit-user-drag: none; cursor: grab; }
+        #lightbox-img.panning { cursor: grabbing; }
+        #lightbox-close { position: absolute; top: 16px; right: 20px; font-size: 34px; color: rgba(255,255,255,0.7); cursor: pointer; line-height: 1; background: none; border: none; z-index: 100000; transition: color 0.15s; }
+        #lightbox-close:hover { color: #fff; }
+        #lightbox-scale-badge { position: absolute; bottom: 74px; left: 50%; transform: translateX(-50%); color: rgba(255,255,255,0.8); font-size: 12px; font-weight: 700; background: rgba(0,0,0,0.5); padding: 3px 12px; border-radius: 20px; pointer-events: none; display: none; font-family: "JetBrains Mono", monospace; }
+        #lightbox-zoom-btns { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; }
+        #lightbox-zoom-btns button { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--border-bright); background: rgba(255,255,255,0.12); color: #fff; font-size: 22px; cursor: pointer; font-weight: bold; transition: background 0.15s; }
+        #lightbox-zoom-btns button:hover { background: rgba(255,255,255,0.22); }
+
+        /* Edit mode */
+        #edit-mode { padding: 20px; overflow-y: auto; flex: 1; touch-action: pan-y; -webkit-overflow-scrolling: touch; background: var(--surface); }
+        #edit-mode::-webkit-scrollbar { width: 4px; }
+        #edit-mode::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 4px; }
+        .process-chip { padding: 6px 13px; border-radius: 20px; border: 1px solid var(--border-bright); font-size: var(--fs-sub); cursor: pointer; background: var(--surface2); color: var(--text-secondary); margin-right: 6px; margin-bottom: 6px; font-family: "IBM Plex Sans KR", sans-serif; transition: background 0.12s, color 0.12s, border-color 0.12s; }
+        .process-chip:hover { background: var(--surface3); color: var(--text-primary); }
+        .process-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 8px var(--accent-glow); }
+        textarea { width: 100%; height: 80px; padding: 12px; border: 1px solid var(--border-bright); border-radius: 10px; margin: 8px 0; font-size: var(--fs-body); background: var(--primary); color: var(--text-primary); font-family: "IBM Plex Sans KR", sans-serif; resize: none; transition: border-color 0.15s; box-sizing: border-box; }
+        textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .thumb-container { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+        .thumb-wrapper { position: relative; width: 76px; height: 76px; }
+        .thumb-wrapper img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; border: 1px solid var(--border-bright); }
+        .thumb-del-btn { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; background: var(--danger); color: white; border-radius: 50%; text-align: center; font-size: 13px; border: 2px solid var(--surface); line-height: 17px; cursor: pointer; }
+
+        /* Context menu */
+        #tree-context-menu { display: none; position: fixed; z-index: 9999; background: var(--surface2); border: 1px solid var(--border-bright); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.5); overflow: hidden; min-width: 200px; animation: menuPop 0.15s ease; }
+        @keyframes menuPop { from { transform: scale(0.88); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        #tree-context-menu .menu-title { padding: 11px 16px 8px; font-size: var(--fs-small); color: var(--text-muted); border-bottom: 1px solid var(--border); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+        #tree-context-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 16px; border: none; background: none; font-size: var(--fs-sub); cursor: pointer; text-align: left; border-bottom: 1px solid var(--border); color: var(--text-primary); font-weight: 500; transition: background 0.12s, color 0.12s; font-family: "IBM Plex Sans KR", sans-serif; }
+        #tree-context-menu button:last-child { border-bottom: none; }
+        #tree-context-menu button:hover { background: var(--surface3); color: var(--text-primary); }
+        #tree-context-menu button.danger { color: var(--danger); }
+        #tree-context-menu button.danger:hover { background: rgba(255,69,69,0.12); }
+
+        /* PWA */
+        #pwa-install-overlay { display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); justify-content: center; align-items: center; flex-direction: column; gap: 0; }
+        #pwa-install-overlay.show { display: flex; }
+        #pwa-install-card { background: var(--surface); border: 1px solid var(--border-bright); border-radius: 24px; padding: 40px 44px; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.6); max-width: 360px; width: 90%; animation: pwaFadeIn 0.3s ease; }
+        @keyframes pwaFadeIn { from { opacity:0; transform: scale(0.88) translateY(20px); } to { opacity:1; transform: scale(1) translateY(0); } }
+        #pwa-install-card img { width: 90px; height: 90px; border-radius: 20px; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        #pwa-install-card h2 { margin: 0 0 8px; font-size: 21px; color: var(--text-primary); font-weight: 800; }
+        #pwa-install-card p  { margin: 0 0 28px; font-size: 14px; color: var(--text-secondary); line-height: 1.6; }
+        #pwa-btn-install { width: 100%; padding: 15px; background: linear-gradient(135deg, #c0392b, #e74c3c); color: #fff; border: none; border-radius: 12px; font-size: 17px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 20px rgba(192,57,43,0.4); margin-bottom: 12px; transition: transform 0.1s; font-family: "IBM Plex Sans KR", sans-serif; }
+        #pwa-btn-install:active { transform: scale(0.97); }
+        #pwa-btn-skip { width: 100%; padding: 12px; background: none; border: none; color: var(--text-muted); font-size: 13px; cursor: pointer; font-family: "IBM Plex Sans KR", sans-serif; }
+    </style>
+</head>
+<body>
+    <!-- PWA 설치 오버레이 -->
+    <div id="pwa-install-overlay">
+        <div id="pwa-install-card">
+            <img src="/icons/icon-192x192.png" alt="앱 아이콘">
+            <h2>현장품질검수 Pro</h2>
+            <p>홈 화면에 설치하면<br>앱처럼 빠르게 실행할 수 있습니다.</p>
+            <button id="pwa-btn-install" onclick="pwaBtnInstall()">⬇️ 지금 설치하기</button>
+            <button id="pwa-btn-skip" onclick="pwaDismiss()">나중에 설치</button>
+        </div>
+    </div>
+
+    <header>
+        <div style="display:flex; align-items:center; gap:10px; height:100%; min-width:0;">
+            <img src="data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCABbAEADASIAAhEBAxEB/8QAGwAAAwEBAQEBAAAAAAAAAAAAAAcIBgUDBAn/xAA5EAAABQEDCQUHAwUAAAAAAAAAAQIDBQQGBxEIEiExNkFhdLITFDdzsyIjQlFSYqGBkfAyccHR4f/EABwBAAICAwEBAAAAAAAAAAAAAAABBQYDBAcCCP/EACoRAAEDAgUCBQUAAAAAAAAAAAEAAgMEEQUGITFxElETIkFhsSMzNXKR/9oADAMBAAIRAxEAPwCywAABCAAABCAACtvIvUp43tYuzi26mtLFLlV/U20f27lK/BcdQELU28tvE2TpcKhXeK5acWqVCvaPio/hTx/bEc+520UlaaLk5GTcSa++ZraEFgltOYkySRfrv0idqypqKyqcqqt9x991WctxxWKlH8zMPHJx2VkeePoSGkmiAAAk0AAACEmb+7VS9LJJs5Rvd3pHKdLjym9C3M4zLNM9ydGote8J0MXKD28b5JvqWF0GkUB75OOysjzx9CQiA98nHZWR54+hICgLZ28tRSWPs8qcr2HXqZt5ttwmsM5JLUSc4iPXhjjgOhAzEZPRbMnEVjVZSPFihxs8S/sZayMt5HpIYHKa8IpDz2PUITVd7biesRKd8iKjFlZl3ilcMzaeLiW4/kotJfgR09b4E3S7ayumEZWGLYY6eF1pA4jXYiw09jrv/e6uEAyF2l4UDbqP7WPd7CubTjUUTqi7RviX1J+4v1wPQNeN5j2vHU03CqdTTTUspimaWuG4KnzKD28b5JvqWF0GLlB7eN8k31LC6Hta5QHvk47KyPPH0JCID3ycdlZHnj6EgKAvXKa8IpDz2PUISGK8ymvCKQ89j1CEhiv4n94cLs2QPxjv3Pw1fVFSNdFSDMhG1TtJVsKzm3WlYKSf83bxUVyV7zdr3moCbZ7CbzDNt1tPu6kkliZ4fArAjMy1Hhow1CUwyMmvxhifLqPRWMNFM+OUNB0JUlmnC6asoJJZW+ZjSQfXQXtx7Le5Qe3jfJN9SwugxcoPbxvkm+pYXQsy4OUB75OOysjzx9CQiA98nHZWR54+hICgLt34Wfk7T3cSEVENJerFKbcQ2pWbn5iiUZEZ6McC0YiMqumqKOqdpathxh9pRocbcSaVIUWsjI9Rj9Axgr1br4S3VKp9RJoZhCcGq1CdKsNSXC+JP5Ld8jja2jM3nburzlPNDMLBpqgfTJvcbgmw17jTnlRoGRk1+MMT5dR6Kxk7Z2Vm7IzCoybpFMOlibbhaW3k/UhW8vyW/AxrMmvxhifLqPRWIiBpbO0HuF0zGJmTYTPJGbtLHWI4K3uUHt43yTfUsLoMXKD28b5JvqWMHGUFbJ1zdDH0zlTUOnghtBYmf+i4i0r56XzChbhomRirJvnIUq6Y6qp7ZpKywUaM1JEZlrLUeseV292FHB9nJTRN1kkWCkI1tMHw+pXHdu+YZAEBAAACTXItdZqGtVDuRc3RoqWFaUnqW2r6kK1pP+HoCYsLdXMWGvoi6xs1V8Ksnybq0p0t4srwS4W492Oo+B6A/gDBJTskcHHcKWocaqqOCSnYbseCCDtqLXHY/Pqk9ebY+XtXeS21QtdnTIo2ieqnC9hv2lfufAvxrDBsVZGIspQ9jQNZ76y99UrL3jh/4LgX/RoADOolAAAAhf/Z" alt="logo" style="height:32px; width:auto; display:block; border-radius:6px; opacity:0.9;">
+            <span style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:600; color:var(--text-primary); letter-spacing:0.02em; white-space:nowrap;">PUNCH LIST</span>
+            <span id="site-name-display"
+                  onclick="startEditSiteName()"
+                  title="클릭하여 현장명 입력"
+                  style="font-size:var(--fs-sub); color:var(--accent); cursor:pointer; white-space:nowrap; padding:3px 10px; border-radius:6px; border:1px solid rgba(26,140,255,0.35); background:rgba(26,140,255,0.08);">
+                ✏️ 현장명
+            </span>
+            <input id="site-name-input" type="text" placeholder="현장명 입력"
+                   onblur="finishEditSiteName()"
+                   onkeydown="if(event.key==='Enter') this.blur()"
+                   style="display:none; font-size:var(--fs-sub); background:var(--surface3); border:1px solid var(--accent); border-radius:6px; color:var(--text-primary); outline:none; width:130px; padding:3px 8px; font-family:'IBM Plex Sans KR',sans-serif;">
+        </div>
+        <div style="display:flex; align-items:center; gap:5px;">
+            <button onclick="exportExcel()" title="엑셀로 내보내기" style="padding:5px 10px; background:#1a6b3a; color:#fff; border:none; border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif; transition:filter 0.15s;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter=''">📊 엑셀</button>
+            <button onclick="exportJSON()" title="데이터 백업" style="padding:5px 10px; background:var(--surface3); color:var(--text-secondary); border:1px solid var(--border-bright); border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">💾 백업</button>
+            <button onclick="document.getElementById('import-json-input').click()" title="데이터 불러오기/덮어쓰기" style="padding:5px 10px; background:#7a4200; color:#ffcc80; border:none; border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">📂 불러오기</button>
+            <input type="file" id="import-json-input" accept=".json" style="display:none" onchange="importJSON(event)">
+            <button onclick="openDeleteDataModal()" style="padding:5px 10px; background:rgba(255,69,69,0.12); color:var(--danger); border:1px solid rgba(255,69,69,0.3); border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">🗑️ 삭제</button>
+            <span id="db-status" style="font-size:var(--fs-small); color:var(--success); font-family:'JetBrains Mono',monospace; font-weight:600; min-width:60px; text-align:right;">⏳</span>
+        </div>
+    </header>
+    <main>
+        <nav id="sidebar-left">
+            <div style="padding:10px 12px; border-bottom:1px solid var(--border); background:var(--primary);">
+                <button onclick="openAddBlueprintModal()" style="width:100%; padding:10px; background:var(--accent); color:#fff; border:none; border-radius:8px; font-size:var(--fs-sub); font-weight:700; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; box-shadow:0 2px 12px var(--accent-glow); transition:background 0.15s;">＋ 도면 추가</button>
+            </div>
+            <div id="tree-container"></div>
+        </nav>
+        <section id="content-center">
+            <div id="zoom-viewport">
+                <div id="canvas-container" onclick="handleCanvasClick(event)">
+                    <img id="blueprint-display" src="" alt="도면">
+                    <div id="pin-layer"></div>
+                </div>
+            </div>
+            <div id="zoom-controls">
+                <button class="zoom-btn" onclick="zoomStep(1.25)" title="확대">＋</button>
+                <button class="zoom-btn" onclick="resetZoom()" title="맞춤" style="font-size:12px;">⊡</button>
+                <button class="zoom-btn" onclick="zoomStep(0.8)" title="축소">－</button>
+            </div>
+            <div id="zoom-level-badge"></div>
+        </section>
+        <aside id="sidebar-right"><div id="pin-summary-list"></div></aside>
+    </main>
+
+    <div class="modal-overlay" id="modal-overlay" onclick="closeAllModals()"></div>
+
+    <!-- 데이터 삭제 선택 모달 -->
+    <div id="delete-data-modal" style="display:none; position:fixed; inset:0; z-index:9000; justify-content:center; align-items:center; display:none; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);">
+        <div style="background:var(--surface); border:1px solid var(--border-bright); border-radius:18px; padding:28px 24px; width:90%; max-width:400px; box-shadow:0 16px 60px rgba(0,0,0,0.5); position:relative; z-index:9001;">
+            <h3 style="margin:0 0 8px; font-size:var(--fs-title); color:var(--danger); font-family:'IBM Plex Sans KR',sans-serif;">🗑️ 데이터 삭제</h3>
+            <p style="margin:0 0 22px; font-size:var(--fs-sub); color:var(--text-secondary);">삭제 방식을 선택하세요. <b style="color:var(--danger);">삭제 후 복구 불가합니다.</b></p>
+            <button onclick="deleteDataOption1()" style="width:100%; padding:15px; margin-bottom:10px; background:var(--surface2); border:1px solid rgba(255,170,0,0.4); border-radius:12px; cursor:pointer; text-align:left; font-family:'IBM Plex Sans KR',sans-serif; transition:background 0.12s;" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
+                <div style="font-size:var(--fs-sub); font-weight:700; color:var(--warning); margin-bottom:4px;">① 도면 유지 / 마킹·내용·사진 삭제</div>
+                <div style="font-size:var(--fs-small); color:var(--text-muted);">도면 이미지는 그대로 두고, 모든 핀·점검내용·사진만 삭제합니다.</div>
+            </button>
+            <button onclick="deleteDataOption2()" style="width:100%; padding:15px; margin-bottom:20px; background:var(--surface2); border:1px solid rgba(255,69,69,0.4); border-radius:12px; cursor:pointer; text-align:left; font-family:'IBM Plex Sans KR',sans-serif; transition:background 0.12s;" onmouseover="this.style.background='var(--surface3)'" onmouseout="this.style.background='var(--surface2)'">
+                <div style="font-size:var(--fs-sub); font-weight:700; color:var(--danger); margin-bottom:4px;">② 도면·마킹·내용·사진 전체 삭제</div>
+                <div style="font-size:var(--fs-small); color:var(--text-muted);">도면 이미지 포함 모든 데이터를 완전히 삭제합니다.</div>
+            </button>
+            <button onclick="closeDeleteDataModal()" style="width:100%; padding:12px; background:var(--surface3); border:1px solid var(--border-bright); border-radius:10px; font-size:var(--fs-sub); font-weight:600; cursor:pointer; color:var(--text-secondary); font-family:'IBM Plex Sans KR',sans-serif;">취소</button>
+        </div>
+    </div>
+
+    <!-- 도면 추가 모달 -->
+    <div id="add-blueprint-modal" class="modal" style="max-height:80vh;">
+        <div style="padding:16px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); background:var(--primary);">
+            <h3 style="margin:0; font-size:var(--fs-title); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif;">📄 도면 추가</h3>
+            <button onclick="closeAddBlueprintModal()" style="background:var(--surface3); border:1px solid var(--border-bright); border-radius:8px; padding:6px 12px; font-size:var(--fs-body); cursor:pointer; color:var(--text-secondary);">✕</button>
+        </div>
+        <div style="padding:20px; overflow-y:auto; background:var(--surface);">
+            <div style="margin-bottom:14px;">
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); display:block; margin-bottom:6px; font-weight:600;">동/건물명</label>
+                <input id="bp-dong" type="text" placeholder="예: A동" style="width:100%; padding:11px 12px; border:1px solid var(--border-bright); border-radius:8px; font-size:var(--fs-body); box-sizing:border-box; background:var(--primary); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif; outline:none; transition:border-color 0.15s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border-bright)'">
+                <div id="recent-dong" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); display:block; margin-bottom:6px; font-weight:600;">층</label>
+                <input id="bp-floor" type="text" placeholder="예: 3층" style="width:100%; padding:11px 12px; border:1px solid var(--border-bright); border-radius:8px; font-size:var(--fs-body); box-sizing:border-box; background:var(--primary); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif; outline:none; transition:border-color 0.15s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border-bright)'">
+                <div id="recent-floor" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); display:block; margin-bottom:6px; font-weight:600;">공간명 (방/구역)</label>
+                <input id="bp-room" type="text" placeholder="예: 거실, 주방, 화장실" style="width:100%; padding:11px 12px; border:1px solid var(--border-bright); border-radius:8px; font-size:var(--fs-body); box-sizing:border-box; background:var(--primary); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif; outline:none; transition:border-color 0.15s;" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border-bright)'">
+                <div id="recent-room" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:7px;"></div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); display:block; margin-bottom:6px; font-weight:600;">도면 이미지</label>
+                <div id="bp-photo-area" onclick="document.getElementById('bp-file').click()" style="border:2px dashed var(--border-bright); border-radius:10px; padding:28px; text-align:center; cursor:pointer; background:var(--primary); color:var(--text-muted); font-size:var(--fs-sub); transition:border-color 0.15s, background 0.15s;" onmouseover="this.style.borderColor='var(--accent)';this.style.background='rgba(26,140,255,0.05)'" onmouseout="this.style.borderColor='var(--border-bright)';this.style.background='var(--primary)'">
+                    <div style="font-size:28px; margin-bottom:6px;">🖼️</div>
+                    <div>탭하여 도면 이미지 선택</div>
+                </div>
+                <div id="bp-preview-wrap" style="display:none; position:relative;">
+                    <img id="bp-preview" src="" style="width:100%; border-radius:8px; margin-top:8px; max-height:200px; object-fit:contain; border:1px solid var(--border-bright);">
+                    <button onclick="document.getElementById('bp-file').value=''; document.getElementById('bp-file').click()" style="position:absolute; bottom:16px; right:8px; padding:6px 12px; background:rgba(0,0,0,0.7); color:#fff; border:none; border-radius:8px; font-size:var(--fs-small); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🔄 변경</button>
+                </div>
+            </div>
+            <button onclick="saveBlueprint()" style="width:100%; padding:14px; background:var(--accent); color:#fff; border:none; border-radius:10px; font-size:var(--fs-sub); font-weight:700; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; box-shadow:0 4px 16px var(--accent-glow);">저장</button>
+        </div>
+        <input type="file" id="bp-file" accept="image/*" style="display:none" onchange="previewBlueprintImage(this)">
+    </div>
+
+    <!-- 핀 상세 모달 -->
+    <div id="report-modal" class="modal report-modal">
+        <div class="modal-body">
+            <!-- 미리보기 모드 -->
+            <div id="view-mode" style="display:flex; flex-direction:column; height:100%;">
+                <div style="padding:14px 18px; display:flex; justify-content:space-between; align-items:center; background:var(--primary); border-bottom:1px solid var(--border); flex-shrink:0;">
+                    <h3 id="view-title" style="margin:0; font-size:var(--fs-title); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif;">핀 미리보기</h3>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <button onclick="deletePin()" style="padding:7px 14px; background:rgba(255,69,69,0.12); color:var(--danger); border:1px solid rgba(255,69,69,0.3); border-radius:8px; font-size:var(--fs-sub); font-weight:700; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🗑️ 삭제</button>
+                        <button onclick="toggleEditMode(true)" style="padding:7px 14px; background:var(--surface3); color:var(--text-primary); border:1px solid var(--border-bright); border-radius:8px; font-size:var(--fs-sub); font-weight:700; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">📝 수정</button>
+                    </div>
+                </div>
+                <div class="comparison-container">
+                    <div class="comparison-column" style="border-top:3px solid var(--danger);">
+                        <div class="column-header">
+                            <div class="column-title" style="color:var(--danger);">📋 점검 내용 <span id="view-date-before" style="font-weight:400; font-size:var(--fs-small); color:rgba(255,255,255,0.65);"></span></div>
+                            <div id="view-info-before" class="column-info">공정: -<br>내용 없음</div>
+                        </div>
+                        <div class="photo-scroll-area">
+                            <div id="view-photos-before" class="photo-list"></div>
+                        </div>
+                    </div>
+                    <div class="comparison-column" style="border-top:3px solid var(--success);">
+                        <div class="column-header">
+                            <div class="column-title" style="color:var(--success);">✅ 조치 결과 <span id="view-date-after" style="font-weight:400; font-size:var(--fs-small); color:rgba(255,255,255,0.65);"></span></div>
+                            <div id="view-info-after" class="column-info">공정: -<br>내용 없음</div>
+                        </div>
+                        <div class="photo-scroll-area">
+                            <div id="view-photos-after" class="photo-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <button onclick="closeAllModals()" style="padding:14px; background:var(--surface2); border:none; border-top:1px solid var(--border); font-size:var(--fs-sub); font-weight:700; color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; flex-shrink:0;">닫기</button>
+            </div>
+
+            <!-- 편집 모드 -->
+            <div id="edit-mode" style="display:none;">
+                <h3 style="margin-top:0; font-size:var(--fs-title); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif;">상세 기록 수정</h3>
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; display:block; margin-bottom:7px;">🔧 공정</label>
+                <div id="process-chips" style="display:flex; flex-wrap:wrap; margin-bottom:14px;"></div>
+                <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; display:block; margin-bottom:7px;">🚪 실명</label>
+                <div id="room-chips" style="display:flex; flex-wrap:wrap; margin-bottom:15px;"></div>
+                <label style="color:var(--danger); font-weight:700; font-size:var(--fs-sub);">📋 점검 내용</label>
+                <textarea id="note-before" placeholder="점검 내용을 입력하세요"></textarea>
+                <div style="display:flex; gap:6px; margin-bottom:10px;">
+                    <button onclick="triggerUpload('before', 'camera')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">📷 촬영</button>
+                    <button onclick="triggerUpload('before', 'gallery')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🖼️ 갤러리</button>
+                </div>
+                <div id="thumbs-before" class="thumb-container"></div>
+                <hr style="margin:18px 0; border:0; border-top:1px solid var(--border);">
+                <label style="color:var(--success); font-weight:700; font-size:var(--fs-sub);">✅ 조치 결과</label>
+                <textarea id="note-after" placeholder="조치 결과를 입력하세요"></textarea>
+                <div style="display:flex; gap:6px; margin-bottom:10px;">
+                    <button onclick="triggerUpload('after', 'camera')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">📷 촬영</button>
+                    <button onclick="triggerUpload('after', 'gallery')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🖼️ 갤러리</button>
+                </div>
+                <div id="thumbs-after" class="thumb-container"></div>
+                <button onclick="saveData()" style="width:100%; padding:16px; background:var(--accent); color:white; border:none; border-radius:12px; font-size:var(--fs-sub); font-weight:700; margin-top:20px; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; box-shadow:0 4px 20px var(--accent-glow);">💾 저장 완료</button>
+            </div>
+        </div>
+        <input type="file" id="input-camera" style="display:none" accept="image/*" capture="camera" onchange="handlePhotoUpload(event)">
+        <input type="file" id="input-gallery" style="display:none" accept="image/*" multiple onchange="handlePhotoUpload(event)">
+    </div>
+
+    <script>
+        let db;
+        const request = indexedDB.open("InspectionDB", 2);
+        request.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains("blueprints")) {
+                d.createObjectStore("blueprints", { autoIncrement: true });
+            }
+        };
+        request.onsuccess = e => {
+            db = e.target.result;
+            // 스토어가 실제로 존재하는지 한 번 더 확인
+            if (!db.objectStoreNames.contains("blueprints")) {
+                db.close();
+                // 버전을 하나 더 올려서 스토어 강제 생성
+                const fix = indexedDB.open("InspectionDB", db.version + 1);
+                fix.onupgradeneeded = ev => {
+                    ev.target.result.createObjectStore("blueprints", { autoIncrement: true });
+                };
+                fix.onsuccess = ev => { db = ev.target.result; document.getElementById('db-status').innerText = ""; loadAllData(); };
+                fix.onerror   = ev => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; console.error(ev.target.error); };
+            } else {
+                document.getElementById('db-status').innerText = "";
+                loadAllData();
+            }
+        };
+        request.onerror = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; console.error("IndexedDB 오류:", e.target.error); };
+
+        let blueprints = []; let activeIdx = -1; let currentPinId = null; let uploadTarget = 'before';
+        let movingPinId = null; // 이동 중인 핀 ID
+        let isDraggingPin = false; // 드래그 중 도면 클릭 차단용
+        // 공정 목록 — localStorage에서 불러오기 (없으면 기본값)
+        function getProcesses() {
+            try { const s = localStorage.getItem('processes'); return s ? JSON.parse(s) : ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; } catch(e) { return ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; }
+        }
+        function saveProcesses(arr) { localStorage.setItem('processes', JSON.stringify(arr)); }
+
+        function getToday() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
+        // 날짜 서식 통일: 2026.5.7 또는 2026.05.07 → 2026-05-07
+        function normalizeDate(d) {
+            if (!d) return '';
+            const parts = d.replace(/\./g, '-').split('-');
+            if (parts.length !== 3) return d;
+            return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+        }
+
+
+        // ── 현장명 인라인 편집 ──
+        function startEditSiteName() {
+            const disp  = document.getElementById('site-name-display');
+            const input = document.getElementById('site-name-input');
+            input.value = localStorage.getItem('siteName') || '';
+            disp.style.display  = 'none';
+            input.style.display = 'inline-block';
+            input.focus();
+        }
+        function finishEditSiteName() {
+            const disp  = document.getElementById('site-name-display');
+            const input = document.getElementById('site-name-input');
+            const val   = input.value.trim();
+            localStorage.setItem('siteName', val);
+            disp.innerText      = val || '✏️ 현장명';
+            disp.style.display  = 'inline';
+            input.style.display = 'none';
+        }
+        // 앱 시작 시 저장된 현장명 복원
+        (function() {
+            const saved = localStorage.getItem('siteName');
+            if (saved) document.getElementById('site-name-display').innerText = saved;
+        })();
+        function loadAllData() {
+            const transaction = db.transaction(["blueprints"], "readonly");
+            transaction.objectStore("blueprints").getAll().onsuccess = e => { blueprints = e.target.result; renderTree(); };
+        }
+
+        let _saveTimer = null;
+        async function syncDB() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(["blueprints"], "readwrite");
+                const store = transaction.objectStore("blueprints");
+
+                transaction.oncomplete = () => {
+                    // 💾 저장됨 표시 — 2초 후 자동으로 사라짐
+                    const el = document.getElementById('db-status');
+                    el.innerText = "💾 저장됨";
+                    clearTimeout(_saveTimer);
+                    _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
+                    resolve();
+                };
+                transaction.onerror   = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; reject(e.target.error); };
+                transaction.onabort   = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; reject(e.target.error); };
+
+                const clearReq = store.clear();
+                clearReq.onsuccess = () => {
+                    blueprints.forEach(bp => store.add(bp));
+                };
+                clearReq.onerror = e => reject(e.target.error);
+            });
+        }
+
+        // 핀 카운트 집계 헬퍼
+        function countPins(bpList) {
+            let red = 0, blue = 0;
+            bpList.forEach(bp => {
+                bp.pins.forEach(pin => {
+                    if ((pin.afterPhotos && pin.afterPhotos.length > 0) || pin.afterNote) blue++;
+                    else red++;
+                });
+            });
+            return { red, blue };
+        }
+
+        function makeBadges(red, blue) {
+            const wrap = document.createElement('div');
+            wrap.className = 'tree-badges';
+            const r = document.createElement('span');
+            r.className = `tree-badge red${red === 0 ? ' zero' : ''}`;
+            r.textContent = red;
+            const b = document.createElement('span');
+            b.className = `tree-badge blue${blue === 0 ? ' zero' : ''}`;
+            b.textContent = blue;
+            wrap.appendChild(r);
+            wrap.appendChild(b);
+            return wrap;
+        }
+
+        // ── 트리 순서 저장/로드 (동, 층) ──
+        function getTreeOrder(key) {
+            try { return JSON.parse(localStorage.getItem('treeOrder_' + key) || '[]'); } catch(e) { return []; }
+        }
+        function setTreeOrder(key, arr) {
+            localStorage.setItem('treeOrder_' + key, JSON.stringify(arr));
+        }
+        function sortByOrder(items, savedOrder) {
+            const ordered = [];
+            savedOrder.forEach(k => { if (items.includes(k)) ordered.push(k); });
+            items.forEach(k => { if (!ordered.includes(k)) ordered.push(k); });
+            return ordered;
+        }
+        // 가나다/알파벳/숫자 자연 정렬
+        function naturalSort(arr) {
+            return [...arr].sort((a, b) =>
+                a.localeCompare(b, ['ko', 'en'], { numeric: true, sensitivity: 'base' })
+            );
+        }
+
+        function renderTree() {
+            const container = document.getElementById('tree-container');
+
+            // ── 현재 열린 동/층 상태 저장 ──
+            const openDongs  = new Set();
+            const openFloors = new Set(); // "dong::floor" 키
+            container.querySelectorAll('.tree-children[data-level="dong"].active').forEach(el => {
+                openDongs.add(el.getAttribute('data-dong'));
+            });
+            container.querySelectorAll('.tree-children[data-level="floor"].active').forEach(el => {
+                openFloors.add(el.getAttribute('data-floor-key'));
+            });
+
+            container.innerHTML = "";
+            const treeData = {};
+            blueprints.forEach((bp, index) => {
+                if (!treeData[bp.dong]) treeData[bp.dong] = {};
+                if (!treeData[bp.dong][bp.floor]) treeData[bp.dong][bp.floor] = [];
+                treeData[bp.dong][bp.floor].push({ ...bp, originalIndex: index });
+            });
+
+            // 동 순서: 저장된 순서 우선, 없으면 기존 순서
+            const dongKeys = sortByOrder(Object.keys(treeData), getTreeOrder('dong'));
+
+            let isFirstDong = true;
+            dongKeys.forEach(dong => {
+                const allDongBps = Object.values(treeData[dong]).flat();
+                const dongCount = countPins(allDongBps.map(r => blueprints[r.originalIndex]));
+
+                const dongNode = document.createElement('div');
+                dongNode.setAttribute('data-dong-node', dong);
+
+                const dongLabel = document.createElement('div');
+                dongLabel.className = 'tree-node';
+                dongLabel.setAttribute('draggable', 'false'); // 핸들로만 드래그
+
+                // 드래그 핸들
+                const dongHandle = document.createElement('span');
+                dongHandle.className = 'tree-drag-handle';
+                dongHandle.textContent = '⠿';
+                dongHandle.title = '드래그하여 순서 변경';
+                dongLabel.appendChild(dongHandle);
+
+                const dongText = document.createElement('span');
+                dongText.style.flex = '1';
+                dongText.textContent = `📁 ${dong}`;
+                dongLabel.appendChild(dongText);
+                dongLabel.appendChild(makeBadges(dongCount.red, dongCount.blue));
+
+                dongLabel.addEventListener('click', (e) => {
+                    if (e.target === dongHandle) return;
+                    toggleTree(dongLabel, 'dong');
+                });
+                attachLongPress(dongLabel, () => ({ type: 'dong', dong }));
+
+                // 동 드래그 이벤트
+                attachTreeDrag(dongHandle, dongNode, 'dong', container, () => {
+                    const order = [...container.querySelectorAll('[data-dong-node]')].map(n => n.getAttribute('data-dong-node'));
+                    setTreeOrder('dong', order);
+                });
+
+                dongNode.appendChild(dongLabel);
+
+                const dongChildren = document.createElement('div');
+                const dongWasOpen = openDongs.size > 0 ? openDongs.has(dong) : isFirstDong;
+                dongChildren.className = `tree-children${dongWasOpen ? ' active' : ''}`;
+                dongChildren.setAttribute('data-level', 'dong');
+                dongChildren.setAttribute('data-dong', dong);
+                isFirstDong = false;
+
+                // 층 순서: 저장된 순서 우선
+                const floorKeys = sortByOrder(Object.keys(treeData[dong]), getTreeOrder('floor_' + dong));
+
+                floorKeys.forEach(floor => {
+                    const floorKey = `${dong}::${floor}`;
+                    const floorBps = treeData[dong][floor].map(r => blueprints[r.originalIndex]);
+                    const floorCount = countPins(floorBps);
+
+                    const floorNode = document.createElement('div');
+                    floorNode.setAttribute('data-floor-node', floorKey);
+
+                    const floorLabel = document.createElement('div');
+                    floorLabel.className = 'tree-node depth-floor';
+
+                    // 드래그 핸들
+                    const floorHandle = document.createElement('span');
+                    floorHandle.className = 'tree-drag-handle';
+                    floorHandle.textContent = '⠿';
+                    floorHandle.title = '드래그하여 순서 변경';
+                    floorLabel.appendChild(floorHandle);
+
+                    const floorText = document.createElement('span');
+                    floorText.style.flex = '1';
+                    floorText.textContent = `📂 ${floor}`;
+                    floorLabel.appendChild(floorText);
+                    floorLabel.appendChild(makeBadges(floorCount.red, floorCount.blue));
+
+                    floorLabel.addEventListener('click', (e) => {
+                        if (e.target === floorHandle) return;
+                        toggleTree(floorLabel, 'floor');
+                    });
+                    attachLongPress(floorLabel, () => ({ type: 'floor', dong, floor }));
+
+                    // 층 드래그 이벤트
+                    attachTreeDrag(floorHandle, floorNode, 'floor_' + dong, dongChildren, () => {
+                        const order = [...dongChildren.querySelectorAll(':scope > [data-floor-node]')].map(n => n.getAttribute('data-floor-node').split('::')[1]);
+                        setTreeOrder('floor_' + dong, order);
+                    });
+
+                    floorNode.appendChild(floorLabel);
+
+                    const floorChildren = document.createElement('div');
+                    const floorWasOpen = openFloors.has(floorKey);
+                    floorChildren.className = `tree-children${floorWasOpen ? ' active' : ''}`;
+                    floorChildren.setAttribute('data-level', 'floor');
+                    floorChildren.setAttribute('data-floor-key', floorKey);
+
+                    // 공간명: 가나다/알파벳/숫자 자연 정렬
+                    const sortedRooms = naturalSort(treeData[dong][floor].map(r => r.room));
+                    sortedRooms.forEach(roomName => {
+                        const roomObj = treeData[dong][floor].find(r => r.room === roomName);
+                        if (!roomObj) return;
+                        const roomCount = countPins([blueprints[roomObj.originalIndex]]);
+
+                        const roomNode = document.createElement('div');
+                        roomNode.className = `tree-item depth-room doc-item-${roomObj.originalIndex} ${roomObj.originalIndex === activeIdx ? 'selected' : ''}`;
+
+                        const roomLabel = document.createElement('span');
+                        roomLabel.className = 'tree-item-label';
+                        roomLabel.textContent = `📄 ${roomObj.room}`;
+                        roomNode.appendChild(roomLabel);
+                        roomNode.appendChild(makeBadges(roomCount.red, roomCount.blue));
+
+                        roomNode.addEventListener('click', (e) => { e.stopPropagation(); selectMap(roomObj.originalIndex); });
+                        attachLongPress(roomNode, () => ({ type: 'room', dong, floor, roomIndex: roomObj.originalIndex, label: roomObj.room }));
+                        floorChildren.appendChild(roomNode);
+                    });
+
+                    floorNode.appendChild(floorChildren);
+                    dongChildren.appendChild(floorNode);
+                });
+
+                dongNode.appendChild(dongChildren);
+                container.appendChild(dongNode);
+            });
+        }
+
+        // ── 트리 드래그 앤 드롭 (터치 + 마우스 공통) ──
+        function attachTreeDrag(handle, dragNode, orderKey, parentEl, onDrop) {
+            let dragging = false;
+            let ghost = null;
+            let startY = 0;
+
+            function getPointerY(e) { return e.touches ? e.touches[0].clientY : e.clientY; }
+
+            function onStart(e) {
+                if (e.button && e.button !== 0) return;
+                dragging = true;
+                startY = getPointerY(e);
+                dragNode.classList.add('dragging-node');
+
+                ghost = dragNode.cloneNode(true);
+                ghost.style.cssText = `position:fixed; left:${dragNode.getBoundingClientRect().left}px; top:${dragNode.getBoundingClientRect().top}px; width:${dragNode.offsetWidth}px; opacity:0.7; pointer-events:none; z-index:9999; background:#e8f0fe; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,0.2);`;
+                document.body.appendChild(ghost);
+                e.preventDefault();
+            }
+
+            function onMove(e) {
+                if (!dragging) return;
+                const y = getPointerY(e);
+                ghost.style.top = (parseFloat(ghost.style.top) + y - startY) + 'px';
+                startY = y;
+
+                // 삽입 위치 계산
+                const siblings = [...parentEl.children].filter(n => n !== dragNode && n.getAttribute(dragNode.hasAttribute('data-dong-node') ? 'data-dong-node' : 'data-floor-node') !== null);
+                parentEl.querySelectorAll('.tree-node.drag-over').forEach(n => n.classList.remove('drag-over'));
+
+                for (const sib of siblings) {
+                    const rect = sib.getBoundingClientRect();
+                    if (y < rect.top + rect.height / 2) {
+                        sib.querySelector('.tree-node')?.classList.add('drag-over');
+                        break;
+                    }
+                }
+                e.preventDefault();
+            }
+
+            function onEnd(e) {
+                if (!dragging) return;
+                dragging = false;
+                dragNode.classList.remove('dragging-node');
+                if (ghost) { ghost.remove(); ghost = null; }
+
+                const y = e.changedTouches ? e.changedTouches[0].clientY : e.clientY;
+                const attrKey = dragNode.hasAttribute('data-dong-node') ? 'data-dong-node' : 'data-floor-node';
+                const siblings = [...parentEl.children].filter(n => n.getAttribute(attrKey) !== null);
+
+                parentEl.querySelectorAll('.tree-node.drag-over').forEach(n => n.classList.remove('drag-over'));
+
+                let inserted = false;
+                for (const sib of siblings) {
+                    if (sib === dragNode) continue;
+                    const rect = sib.getBoundingClientRect();
+                    if (y < rect.top + rect.height / 2) {
+                        parentEl.insertBefore(dragNode, sib);
+                        inserted = true;
+                        break;
+                    }
+                }
+                if (!inserted) parentEl.appendChild(dragNode);
+                onDrop();
+            }
+
+            // 마우스
+            handle.addEventListener('mousedown', onStart);
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+
+            // 터치
+            handle.addEventListener('touchstart', onStart, { passive: false });
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('touchend', onEnd);
+        }
+
+        function toggleTree(el, level) {
+            const children = el.nextElementSibling;
+            const isOpen = children.classList.contains('active');
+            if (isOpen) {
+                children.classList.remove('active');
+                return;
+            }
+            // 같은 부모 안의 동일 레벨 형제 children 모두 닫기 (아코디언)
+            const parentContainer = el.parentElement.parentElement;
+            parentContainer.querySelectorAll(`:scope > div > .tree-children[data-level="${level}"]`)
+                .forEach(c => c.classList.remove('active'));
+            children.classList.add('active');
+        }
+
+        // ── 줌/패닝 상태 ──
+        let zoomScale   = 1;   // 현재 배율 (fitScale 기준 배수)
+        let fitScale    = 1;   // fit 상태의 CSS scale 값
+        let baseW = 0, baseH = 0;  // fit 상태의 이미지 픽셀 크기
+        let panX = 0, panY = 0;    // translate 오프셋(px)
+        let isPanning   = false;
+        let panStartX   = 0, panStartY = 0;
+        let panOriginX  = 0, panOriginY = 0;
+
+        const MIN_ZOOM = 1.0;   // fit 이하로는 축소 불가
+        const MAX_ZOOM = 8.0;
+
+        function applyTransform() {
+            const container = document.getElementById('canvas-container');
+            const s = fitScale * zoomScale;
+            container.style.transform = `translate(${panX}px, ${panY}px) scale(${s})`;
+            // 핀은 항상 화면상 동일 크기 유지 — 줌 배율의 역수로 보정
+            const inv = 1 / s;
+            document.querySelectorAll('#pin-layer .pin').forEach(pin => {
+                pin.style.transform = `translate(-50%, -50%) scale(${inv})`;
+            });
+        }
+
+        function clampPan() {
+            const center = document.getElementById('content-center');
+            const cw = center.clientWidth, ch = center.clientHeight;
+            const s = fitScale * zoomScale;
+            const iw = baseW * s, ih = baseH * s;
+
+            // 도면이 뷰포트보다 작으면 중앙 고정
+            if (iw <= cw) { panX = (cw - iw) / 2; }
+            else {
+                const minX = cw - iw;
+                panX = Math.min(0, Math.max(minX, panX));
+            }
+            if (ih <= ch) { panY = (ch - ih) / 2; }
+            else {
+                const minY = ch - ih;
+                panY = Math.min(0, Math.max(minY, panY));
+            }
+        }
+
+        // 도면 이미지를 가운데 영역에 꽉 차게 맞추는 함수
+        function fitBlueprint() {
+            const center = document.getElementById('content-center');
+            const container = document.getElementById('canvas-container');
+            const img = document.getElementById('blueprint-display');
+            if (!img.naturalWidth || !img.naturalHeight) return;
+
+            const pad = 20;
+            const availW = center.clientWidth  - pad * 2;
+            const availH = center.clientHeight - pad * 2;
+            const ratio  = img.naturalWidth / img.naturalHeight;
+
+            let w, h;
+            if (availW / availH > ratio) {
+                h = availH; w = Math.round(h * ratio);
+            } else {
+                w = availW; h = Math.round(w / ratio);
+            }
+
+            // 실제 이미지 크기 고정, transform으로만 스케일
+            baseW = w; baseH = h;
+            img.style.width  = w + 'px';
+            img.style.height = h + 'px';
+            container.style.width  = w + 'px';
+            container.style.height = h + 'px';
+            container.style.position = 'absolute';
+            container.style.left = '0';
+            container.style.top  = '0';
+            container.style.transformOrigin = '0 0';
+
+            // fit 배율 계산 (scale=1 일 때 뷰포트 꽉 참)
+            fitScale = 1;
+            zoomScale = 1;
+            panX = (center.clientWidth  - w) / 2;
+            panY = (center.clientHeight - h) / 2;
+            applyTransform();
+            showZoomBadge();
+        }
+
+        function resetZoom() {
+            zoomScale = 1;
+            const center = document.getElementById('content-center');
+            panX = (center.clientWidth  - baseW) / 2;
+            panY = (center.clientHeight - baseH) / 2;
+            applyTransform();
+            showZoomBadge();
+        }
+
+        function zoomStep(factor, cx, cy) {
+            const center = document.getElementById('content-center');
+            // 줌 기준점: 지정 없으면 뷰포트 중앙
+            const pivotX = (cx !== undefined) ? cx : center.clientWidth  / 2;
+            const pivotY = (cy !== undefined) ? cy : center.clientHeight / 2;
+
+            const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomScale * factor));
+            const ratio   = newZoom / zoomScale;
+            zoomScale = newZoom;
+
+            // 줌 기준점 유지하며 pan 보정
+            panX = pivotX - ratio * (pivotX - panX);
+            panY = pivotY - ratio * (pivotY - panY);
+            clampPan();
+            applyTransform();
+            showZoomBadge();
+        }
+
+        let zoomBadgeTimer = null;
+        function showZoomBadge() {
+            const badge = document.getElementById('zoom-level-badge');
+            if (!badge) return;
+            badge.textContent = Math.round(zoomScale * 100) + '%';
+            badge.style.display = 'block';
+            clearTimeout(zoomBadgeTimer);
+            zoomBadgeTimer = setTimeout(() => { badge.style.display = 'none'; }, 1500);
+        }
+
+        // ── 마우스 휠 줌 ──
+        document.getElementById('content-center').addEventListener('wheel', e => {
+            if (activeIdx === -1) return;
+            e.preventDefault();
+            const center = document.getElementById('content-center');
+            const rect = center.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+            zoomStep(factor, cx, cy);
+        }, { passive: false });
+
+        // ── 마우스 드래그 패닝 ──
+        (function() {
+            const center = document.getElementById('content-center');
+            let dragging = false;
+            let dragStartX = 0, dragStartY = 0;
+            let panStartXd = 0, panStartYd = 0;
+            let moved = false;
+
+            center.addEventListener('mousedown', e => {
+                if (e.button !== 0 || activeIdx === -1) return;
+                // 핀 클릭은 패닝 시작 안 함
+                if (e.target.classList.contains('pin')) return;
+                dragging = true; moved = false;
+                dragStartX = e.clientX; dragStartY = e.clientY;
+                panStartXd = panX; panStartYd = panY;
+                document.getElementById('canvas-container').classList.add('panning');
+                e.preventDefault();
+            });
+            document.addEventListener('mousemove', e => {
+                if (!dragging) return;
+                const dx = e.clientX - dragStartX;
+                const dy = e.clientY - dragStartY;
+                if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+                if (!moved) return;
+                panX = panStartXd + dx;
+                panY = panStartYd + dy;
+                clampPan();
+                applyTransform();
+            });
+            document.addEventListener('mouseup', e => {
+                if (!dragging) return;
+                dragging = false;
+                document.getElementById('canvas-container').classList.remove('panning');
+                if (moved) {
+                    // 드래그 후 click(handleCanvasClick) 차단
+                    center._suppressClick = true;
+                    setTimeout(() => { center._suppressClick = false; }, 50);
+                }
+            });
+        })();
+
+        // ── 터치 핀치 줌 + 패닝 ──
+        (function() {
+            const center = document.getElementById('content-center');
+            let touches = [];
+            let initDist = 0, initZoom = 1;
+            let initPanX = 0, initPanY = 0;
+            let initMidX = 0, initMidY = 0;
+            let touchMoved = false;
+
+            function dist(a, b) {
+                return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+            }
+            function mid(a, b) {
+                return { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 };
+            }
+
+            center.addEventListener('touchstart', e => {
+                if (activeIdx === -1) return;
+                touches = Array.from(e.touches);
+                touchMoved = false;
+                if (touches.length === 2) {
+                    e.preventDefault();
+                    initDist = dist(touches[0], touches[1]);
+                    initZoom = zoomScale;
+                    initPanX = panX; initPanY = panY;
+                    const m = mid(touches[0], touches[1]);
+                    const rect = center.getBoundingClientRect();
+                    initMidX = m.x - rect.left;
+                    initMidY = m.y - rect.top;
+                } else if (touches.length === 1) {
+                    initPanX = panX; initPanY = panY;
+                    initMidX = touches[0].clientX;
+                    initMidY = touches[0].clientY;
+                }
+            }, { passive: false });
+
+            center.addEventListener('touchmove', e => {
+                if (activeIdx === -1) return;
+                const t = Array.from(e.touches);
+                touchMoved = true;
+                if (t.length === 2 && touches.length === 2) {
+                    e.preventDefault();
+                    const rect = center.getBoundingClientRect();
+                    const curDist = dist(t[0], t[1]);
+                    const factor  = curDist / initDist;
+                    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, initZoom * factor));
+                    const ratio   = newZoom / initZoom;
+                    zoomScale = newZoom;
+
+                    const m = mid(t[0], t[1]);
+                    const curMidX = m.x - rect.left;
+                    const curMidY = m.y - rect.top;
+
+                    panX = curMidX - ratio * (initMidX - initPanX);
+                    panY = curMidY - ratio * (initMidY - initPanY);
+                    clampPan();
+                    applyTransform();
+                    showZoomBadge();
+                } else if (t.length === 1 && touches.length === 1 && zoomScale > 1) {
+                    // 확대 상태에서 단일 터치 패닝
+                    if (e.target.classList.contains('pin')) return;
+                    e.preventDefault();
+                    const dx = t[0].clientX - initMidX;
+                    const dy = t[0].clientY - initMidY;
+                    panX = initPanX + dx;
+                    panY = initPanY + dy;
+                    clampPan();
+                    applyTransform();
+                }
+            }, { passive: false });
+
+            center.addEventListener('touchend', e => {
+                touches = Array.from(e.touches);
+                if (touches.length === 0 && touchMoved) {
+                    // 터치 이동 후 canvas click 차단
+                    center._suppressClick = true;
+                    setTimeout(() => { center._suppressClick = false; }, 80);
+                }
+            });
+        })();
+
+        function selectMap(idx) { 
+            activeIdx = idx;
+            zoomScale = 1; panX = 0; panY = 0;
+            const img = document.getElementById('blueprint-display');
+            img.onload = () => { fitBlueprint(); renderPins(); };
+            img.src = blueprints[idx].src;
+            document.getElementById('canvas-container').style.display = 'block';
+            renderTree();
+            // 선택된 공간의 동/층을 자동으로 열기
+            const bp = blueprints[idx];
+            const container = document.getElementById('tree-container');
+            const dongEl = container.querySelector(`.tree-children[data-dong="${CSS.escape(bp.dong)}"]`);
+            if (dongEl && !dongEl.classList.contains('active')) dongEl.classList.add('active');
+            const floorKey = `${bp.dong}::${bp.floor}`;
+            const floorEl = container.querySelector(`.tree-children[data-floor-key="${CSS.escape(floorKey)}"]`);
+            if (floorEl && !floorEl.classList.contains('active')) floorEl.classList.add('active');
+            renderRightList();
+        }
+
+        // 창 크기 변경 시 재계산 (PC 리사이즈 & 태블릿 회전 대응)
+        window.addEventListener('resize', () => {
+            if (activeIdx !== -1) { fitBlueprint(); renderPins(); }
+        });
+
+        function renderPins() {
+            const layer = document.getElementById('pin-layer'); layer.innerHTML = "";
+            if(activeIdx === -1) return;
+            blueprints[activeIdx].pins.forEach(p => {
+                const el = document.createElement('div');
+                el.className = `pin ${(p.afterPhotos && p.afterPhotos.length > 0) || p.afterNote ? 'pin-blue' : 'pin-red'}`;
+                el.style.left = p.x + '%'; el.style.top = p.y + '%'; el.innerText = p.id;
+
+                let longTimer = null;
+                let isDragging = false;
+                let touchStartX = 0, touchStartY = 0;
+
+                function getImg() { return document.getElementById('blueprint-display'); }
+
+                function toPercent(clientX, clientY) {
+                    const r = getImg().getBoundingClientRect();
+                    return {
+                        nx: Math.min(100, Math.max(0, ((clientX - r.left) / r.width)  * 100)),
+                        ny: Math.min(100, Math.max(0, ((clientY - r.top)  / r.height) * 100))
+                    };
+                }
+
+                function startDrag() {
+                    isDragging = true;
+                    isDraggingPin = true;
+                    const inv = 1 / (fitScale * zoomScale);
+                    el.style.opacity    = '0.75';
+                    el.style.transform  = `translate(-50%,-50%) scale(${inv * 1.35})`;
+                    el.style.zIndex     = '500';
+                    el.style.transition = 'transform 0.12s';
+                    el.style.cursor     = 'grabbing';
+                    if (navigator.vibrate) navigator.vibrate(40);
+                }
+
+                function endDrag() {
+                    if(!isDragging) return;
+                    isDragging = false;
+                    setTimeout(() => { isDraggingPin = false; }, 100);
+                    const nx = parseFloat(el.style.left);
+                    const ny = parseFloat(el.style.top);
+                    const pin = blueprints[activeIdx].pins.find(x => x.id === p.id);
+                    if(pin) { pin.x = nx; pin.y = ny; syncDB(); }
+                    const inv = 1 / (fitScale * zoomScale);
+                    el.style.opacity = ''; el.style.transform = `translate(-50%,-50%) scale(${inv})`; el.style.zIndex = ''; el.style.transition = ''; el.style.cursor = '';
+                    document.removeEventListener('touchmove', onTouchMoveDoc, { passive: false });
+                    document.removeEventListener('touchend',  onTouchEndDoc);
+                    document.removeEventListener('touchcancel', onTouchEndDoc);
+                }
+
+                // document 레벨 핸들러 — 롱프레스 후 등록
+                function onTouchMoveDoc(e) {
+                    if(!isDragging) return;
+                    e.preventDefault();
+                    const t = e.touches[0];
+                    const { nx, ny } = toPercent(t.clientX, t.clientY);
+                    el.style.left = nx + '%';
+                    el.style.top  = ny + '%';
+                }
+                function onTouchEndDoc(e) {
+                    clearTimeout(longTimer);
+                    endDrag();
+                }
+
+                // ── 터치 ──
+                // Android/iOS 롱프레스 컨텍스트 메뉴(공유·인쇄) 완전 차단
+                el.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); });
+
+                el.addEventListener('touchstart', e => {
+                    e.preventDefault(); // 브라우저 롱프레스 팝업 선점 차단
+                    e.stopPropagation();
+                    const t = e.touches[0];
+                    touchStartX = t.clientX;
+                    touchStartY = t.clientY;
+                    isDragging = false;
+                    longTimer = setTimeout(() => {
+                        startDrag();
+                        // 롱프레스 확정 후 document에 이동/종료 핸들러 등록
+                        document.addEventListener('touchmove',   onTouchMoveDoc, { passive: false });
+                        document.addEventListener('touchend',    onTouchEndDoc);
+                        document.addEventListener('touchcancel', onTouchEndDoc);
+                    }, 500);
+                }, { passive: false }); // passive:false 필수 — preventDefault() 사용 전제
+
+                el.addEventListener('touchmove', e => {
+                    if(isDragging) {
+                        e.preventDefault(); // 드래그 중 페이지 스크롤 방지
+                        return; // document 핸들러가 좌표 처리
+                    }
+                    const t = e.touches[0];
+                    const dx = Math.abs(t.clientX - touchStartX);
+                    const dy = Math.abs(t.clientY - touchStartY);
+                    // 20px 이상 움직이면 롱프레스 취소 (스크롤 의도) — 임계값 완화
+                    if(dx > 20 || dy > 20) clearTimeout(longTimer);
+                }, { passive: false });
+
+                el.addEventListener('touchend', e => {
+                    clearTimeout(longTimer);
+                    if(!isDragging) {
+                        e.preventDefault();   // 후속 click 이벤트(→ handleCanvasClick) 차단
+                        e.stopPropagation();
+                        openViewModal(p.id);
+                    }
+                });
+
+                el.addEventListener('touchcancel', () => { clearTimeout(longTimer); endDrag(); });
+
+                // ── 마우스 (PC) ──
+                // click 이벤트가 canvas-container의 handleCanvasClick으로 버블링되지 않도록 차단
+                el.addEventListener('click', e => { e.stopPropagation(); });
+
+                el.addEventListener('mousedown', e => {
+                    e.stopPropagation();
+                    isDragging = false;
+                    longTimer = setTimeout(startDrag, 500);
+
+                    // document에 올려야 핀 밖으로 마우스가 나가도 추적됨
+                    function onMouseMove(ev) {
+                        if(!isDragging) return;
+                        const { nx, ny } = toPercent(ev.clientX, ev.clientY);
+                        el.style.left = nx + '%';
+                        el.style.top  = ny + '%';
+                    }
+
+                    function onMouseUp(ev) {
+                        clearTimeout(longTimer);
+                        document.removeEventListener('mousemove', onMouseMove);
+                        document.removeEventListener('mouseup', onMouseUp);
+                        if(isDragging) {
+                            endDrag();
+                        } else {
+                            openViewModal(p.id);
+                        }
+                    }
+
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+
+                layer.appendChild(el);
+            });
+            // 핀 생성 직후 현재 줌 배율로 크기 보정
+            applyTransform();
+        }
+
+        /* 🟢 미리보기 전용 로직 (2단 구성) */
+        function openViewModal(id) {
+            currentPinId = id; const p = blueprints[activeIdx].pins.find(x => x.id == id);
+            toggleEditMode(false);
+            
+            document.getElementById('view-title').innerText = `No.${p.id} 미리보기`;
+            
+            // Before 정보
+            document.getElementById('view-date-before').innerText = p.beforeDate ? `(${normalizeDate(p.beforeDate)})` : '';
+            document.getElementById('view-info-before').innerHTML = `<span style='color:#fff;'>공정: <b>${p.process || '미지정'}</b>${p.roomName ? ' &nbsp;|&nbsp; 실명: <b>'+p.roomName+'</b>' : ''}</span><br><span style='color:#fff;'>${p.beforeNote || '내용 없음'}</span>`;
+            document.getElementById('view-photos-before').innerHTML = p.beforePhotos.map(img => `<img src="${img}" onclick="openLightbox('${img}')">`).join('');
+            
+            // After 정보
+            document.getElementById('view-date-after').innerText  = p.afterDate  ? `(${normalizeDate(p.afterDate)})` : '';
+            document.getElementById('view-info-after').innerHTML = `<span style='color:#fff;'>공정: <b>${p.process || '미지정'}</b>${p.roomName ? ' &nbsp;|&nbsp; 실명: <b>'+p.roomName+'</b>' : ''}</span><br><span style='color:#fff;'>${p.afterNote || '내용 없음'}</span>`;
+            document.getElementById('view-photos-after').innerHTML = p.afterPhotos.map(img => `<img src="${img}" onclick="openLightbox('${img}')">`).join('');
+            
+            document.getElementById('modal-overlay').style.display='block'; 
+            document.getElementById('report-modal').style.display='flex';
+        }
+
+        function toggleEditMode(isEdit) {
+            document.getElementById('view-mode').style.display = isEdit ? 'none' : 'flex';
+            document.getElementById('edit-mode').style.display = isEdit ? 'block' : 'none';
+            if(isEdit) prepareEditFields();
+        }
+
+        function prepareEditFields() {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            document.getElementById('note-before').value = p.beforeNote || '';
+            document.getElementById('note-after').value = p.afterNote || '';
+            renderChips(p.process);
+            renderRoomChips(p.roomName || '');
+            renderThumbs();
+        }
+
+        function renderChips(selected) {
+            const cont = document.getElementById('process-chips');
+            const procs = getProcesses();
+            cont.innerHTML =
+                procs.map(proc => `
+                    <div style="display:inline-flex; align-items:center; margin-right:5px; margin-bottom:5px;">
+                        <div class="process-chip ${selected===proc?'active':''}"
+                             style="border-radius:15px 0 0 15px; margin:0;"
+                             onclick="setProcess('${proc.replace(/'/g,"\'")}')">${proc}</div>
+                        <div onclick="deleteProcess('${proc.replace(/'/g,"\'")}')"
+                             style="padding:8px 7px; font-size:11px; line-height:1; cursor:pointer;
+                                    background:${selected===proc?'var(--accent)':'var(--surface3)'}; color:${selected===proc?'#fff':'var(--text-muted)'};
+                                    border-radius:0 15px 15px 0; border:1px solid ${selected===proc?'var(--accent)':'var(--border-bright)'}; border-left:none;">✕</div>
+                    </div>`).join('') +
+                `<div class="process-chip" onclick="addProcess()"
+                      style="background:transparent; border:1px dashed var(--accent); color:var(--accent); font-weight:700;">＋ 추가</div>`;
+        }
+
+        function setProcess(proc) {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            p.process = proc; renderChips(proc);
+        }
+
+        function addProcess() {
+            const val = prompt('추가할 공정명을 입력하세요:');
+            if (!val || !val.trim()) return;
+            const procs = getProcesses();
+            const trimmed = val.trim();
+            if (procs.includes(trimmed)) { alert('이미 존재하는 공정입니다.'); return; }
+            procs.push(trimmed);
+            saveProcesses(procs);
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            renderChips(p ? p.process : '');
+        }
+
+        function deleteProcess(proc) {
+            if (!confirm(`'${proc}' 공정을 목록에서 삭제할까요?\n(이미 기록된 핀의 공정은 유지됩니다)`)) return;
+            const procs = getProcesses().filter(p => p !== proc);
+            saveProcesses(procs);
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            renderChips(p ? p.process : '');
+        }
+
+        // ── 실명 관리 ──
+        function getRoomNames() {
+            try { const s = localStorage.getItem('roomNames'); return s ? JSON.parse(s) : ['침실1','침실2','욕실1','욕실2','거실','발코니']; } catch(e) { return ['침실1','침실2','욕실1','욕실2','거실','발코니']; }
+        }
+        function saveRoomNames(arr) { localStorage.setItem('roomNames', JSON.stringify(arr)); }
+
+        function renderRoomChips(selected) {
+            const cont = document.getElementById('room-chips');
+            const rooms = getRoomNames();
+            cont.innerHTML =
+                rooms.map(room => `
+                    <div style="display:inline-flex; align-items:center; margin-right:5px; margin-bottom:5px;">
+                        <div class="process-chip ${selected===room?'active':''}"
+                             style="border-radius:15px 0 0 15px; margin:0;"
+                             onclick="setRoomName('${room.replace(/'/g,"\\'")}' )">${room}</div>
+                        <div onclick="deleteRoomName('${room.replace(/'/g,"\\'")}' )"
+                             style="padding:8px 7px; font-size:11px; line-height:1; cursor:pointer;
+                                    background:${selected===room?'var(--accent)':'var(--surface3)'}; color:${selected===room?'#fff':'var(--text-muted)'};
+                                    border-radius:0 15px 15px 0; border:1px solid ${selected===room?'var(--accent)':'var(--border-bright)'}; border-left:none;">✕</div>
+                    </div>`).join('') +
+                `<div class="process-chip" onclick="addRoomName()"
+                      style="background:transparent; border:1px dashed var(--accent); color:var(--accent); font-weight:700;">＋ 추가</div>`;
+        }
+
+        function setRoomName(room) {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            p.roomName = (p.roomName === room) ? '' : room;
+            renderRoomChips(p.roomName);
+        }
+
+        function addRoomName() {
+            const val = prompt('추가할 실명을 입력하세요:');
+            if (!val || !val.trim()) return;
+            const rooms = getRoomNames();
+            const trimmed = val.trim();
+            if (rooms.includes(trimmed)) { alert('이미 존재하는 실명입니다.'); return; }
+            rooms.push(trimmed);
+            saveRoomNames(rooms);
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            renderRoomChips(p ? p.roomName : '');
+        }
+
+        function deleteRoomName(room) {
+            if (!confirm(`'${room}' 실명을 목록에서 삭제할까요?\n(이미 기록된 핀의 실명은 유지됩니다)`)) return;
+            const rooms = getRoomNames().filter(r => r !== room);
+            saveRoomNames(rooms);
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            renderRoomChips(p ? p.roomName : '');
+        }
+
+        function triggerUpload(target, type) {
+            uploadTarget = target;
+            document.getElementById(type === 'camera' ? 'input-camera' : 'input-gallery').click();
+        }
+
+        async function handlePhotoUpload(e) {
+            const files = Array.from(e.target.files);
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            const today = getToday();
+            for(let file of files) {
+                const raw = await new Promise(r => {
+                    const reader = new FileReader();
+                    reader.onload = ev => r(ev.target.result);
+                    reader.readAsDataURL(file);
+                });
+                const resized = await resizeImage(raw, 1280, 1280, 0.75);
+                if(uploadTarget === 'before') { p.beforePhotos.push(resized); p.beforeDate = today; }
+                else { p.afterPhotos.push(resized); p.afterDate = today; }
+                renderThumbs();
+            }
+        }
+
+        function renderThumbs() {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            document.getElementById('thumbs-before').innerHTML = p.beforePhotos.map((img, i) => `<div class="thumb-wrapper"><img src="${img}"><div class="thumb-del-btn" onclick="delPhoto('before', ${i})">×</div></div>`).join('');
+            document.getElementById('thumbs-after').innerHTML = p.afterPhotos.map((img, i) => `<div class="thumb-wrapper"><img src="${img}"><div class="thumb-del-btn" onclick="delPhoto('after', ${i})">×</div></div>`).join('');
+        }
+
+        function delPhoto(target, idx) {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            if(target === 'before') p.beforePhotos.splice(idx, 1); else p.afterPhotos.splice(idx, 1);
+            renderThumbs();
+        }
+
+        async function saveData() {
+            const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
+            p.beforeNote = document.getElementById('note-before').value;
+            p.afterNote  = document.getElementById('note-after').value;
+            // 조치 내용(텍스트)만 입력되어도 조치일 자동 기록
+            // (사진 업로드 시에는 handlePhotoUpload에서 이미 처리)
+            if (p.afterNote && !p.afterDate) {
+                const today = new Date();
+                p.afterDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+            }
+            // 조치 내용과 사진 모두 지워지면 조치일도 초기화
+            if (!p.afterNote && (!p.afterPhotos || p.afterPhotos.length === 0)) {
+                p.afterDate = '';
+            }
+            await syncDB(); renderPins(); renderRightList(); openViewModal(currentPinId);
+        }
+
+        function renderRightList() {
+            const list = document.getElementById('pin-summary-list'); if(activeIdx === -1) return;
+            list.innerHTML = `<div style="padding:12px 14px; font-weight:700; font-size:var(--fs-small); background:var(--primary); color:var(--text-secondary); border-bottom:1px solid var(--border); text-transform:uppercase; letter-spacing:0.06em;">📌 ${blueprints[activeIdx].room}</div>` + 
+            blueprints[activeIdx].pins.map(p => {
+                const label = [p.process || '미지정', p.roomName].filter(Boolean).join(' / ');
+                const isDone = (p.afterPhotos && p.afterPhotos.length > 0) || p.afterNote;
+                return `<div class="summary-item" onclick="openViewModal(${p.id})"><span style="font-weight:700; color:${isDone?'var(--accent)':'var(--danger)'};">#${p.id}</span> <span style="color:var(--text-secondary);">[${label}]</span><br><small style="color:var(--text-muted);">${p.beforeNote.substring(0,20)||'내용 없음'}</small></div>`;
+            }).join('');
+        }
+
+        // 최근 입력값 관리 (최대 5개)
+        function getRecent(key) {
+            try { return JSON.parse(localStorage.getItem('recent_' + key) || '[]'); } catch(e) { return []; }
+        }
+        function saveRecent(key, value) {
+            if(!value) return;
+            let list = getRecent(key);
+            list = [value, ...list.filter(v => v !== value)].slice(0, 5);
+            localStorage.setItem('recent_' + key, JSON.stringify(list));
+        }
+        function renderRecentTags(key, inputId) {
+            const list = getRecent(key);
+            const container = document.getElementById('recent-' + key);
+            if(!list.length) { container.innerHTML = ''; return; }
+            container.innerHTML = list.map(v =>
+                `<button onclick="document.getElementById('${inputId}').value='${v.replace(/'/g,"\\'")}'" style="padding:5px 12px; border:1px solid var(--border-bright); border-radius:20px; background:var(--surface2); font-size:var(--fs-small); cursor:pointer; color:var(--text-secondary); font-family:'IBM Plex Sans KR',sans-serif;">${v}</button>`
+            ).join('');
+        }
+
+        function openAddBlueprintModal() {
+            document.getElementById('bp-dong').value = '';
+            document.getElementById('bp-floor').value = '';
+            document.getElementById('bp-room').value = '';
+            document.getElementById('bp-preview-wrap').style.display = 'none';
+            document.getElementById('bp-photo-area').style.display = 'block';
+            document.getElementById('bp-preview').src = '';
+            document.getElementById('bp-file').value = '';  // ✅ 같은 파일명 연속 선택 허용
+            renderRecentTags('dong', 'bp-dong');
+            renderRecentTags('floor', 'bp-floor');
+            renderRecentTags('room', 'bp-room');
+            document.getElementById('modal-overlay').style.display = 'block';
+            document.getElementById('add-blueprint-modal').style.display = 'flex';
+        }
+
+        function closeAddBlueprintModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+            document.getElementById('add-blueprint-modal').style.display = 'none';
+        }
+
+        function previewBlueprintImage(input) {
+            const file = input.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById('bp-preview').src = e.target.result;
+                document.getElementById('bp-preview-wrap').style.display = 'block';
+                document.getElementById('bp-photo-area').style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 이미지를 최대 1920px로 리사이즈하여 base64 반환 (태블릿 대용량 이미지 대응)
+        function resizeImage(src, maxW, maxH, quality) {
+            const q = (typeof quality === 'number') ? quality : 0.82;
+            return new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => {
+                    let w = img.width, h = img.height;
+                    if (w > maxW || h > maxH) {
+                        const ratio = Math.min(maxW / w, maxH / h);
+                        w = Math.round(w * ratio); h = Math.round(h * ratio);
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', q));
+                };
+                img.src = src;
+            });
+        }
+
+        async function saveBlueprint() {
+            const dong = document.getElementById('bp-dong').value.trim() || '미지정';
+            const floor = document.getElementById('bp-floor').value.trim() || '미지정';
+            const room = document.getElementById('bp-room').value.trim();
+            const src  = document.getElementById('bp-preview').src;
+            if(!room) { alert('공간명을 입력해주세요.'); return; }
+            if(!src || src === window.location.href || !src.startsWith('data:')) { alert('도면 이미지를 선택해주세요.'); return; }
+
+            const saveBtn = document.querySelector('#add-blueprint-modal button[onclick="saveBlueprint()"]');
+            if(saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '저장 중...'; }
+
+            try {
+                const optimizedSrc = await resizeImage(src, 4096, 4096, 0.90);
+                saveRecent('dong', dong);
+                saveRecent('floor', floor);
+                saveRecent('room', room);
+                blueprints.push({ dong, floor, room, src: optimizedSrc, pins: [] });
+                await syncDB();
+                renderTree();
+                closeAddBlueprintModal();
+                selectMap(blueprints.length - 1);
+            } catch(err) {
+                console.error('저장 실패:', err);
+                alert('저장 중 오류가 발생했습니다.\n' + (err && err.message ? err.message : err));
+                blueprints.pop(); // 실패 시 추가한 항목 롤백
+            } finally {
+                if(saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '저장'; }
+            }
+        }
+
+        // ── 데이터 삭제 ──
+        function openDeleteDataModal() {
+            document.getElementById('delete-data-modal').style.display = 'flex';
+        }
+        function closeDeleteDataModal() {
+            document.getElementById('delete-data-modal').style.display = 'none';
+        }
+
+        // ① 도면 유지 / 핀·내용·사진만 삭제
+        async function deleteDataOption1() {
+            if (!confirm('도면은 유지하고 모든 핀·점검내용·사진을 삭제합니다.\n계속하시겠습니까?')) return;
+            blueprints.forEach(bp => {
+                bp.pins = [];
+            });
+            await syncDB();
+            activeIdx = -1;
+            closeDeleteDataModal();
+            renderTree(); renderRightList();
+            document.getElementById('canvas-container').style.display = 'none';
+            document.getElementById('pin-summary-list').innerHTML = '';
+            alert('핀·내용·사진이 삭제되었습니다.');
+        }
+
+        // ② 전체 삭제 (도면 포함)
+        async function deleteDataOption2() {
+            if (!confirm('도면·핀·내용·사진을 모두 삭제합니다.\n계속하시겠습니까?')) return;
+            blueprints = [];
+            activeIdx = -1;
+            await syncDB();
+            closeDeleteDataModal();
+            renderTree(); renderRightList();
+            document.getElementById('canvas-container').style.display = 'none';
+            document.getElementById('pin-summary-list').innerHTML = '';
+            alert('모든 데이터가 삭제되었습니다.');
+        }
+
+        function closeAllModals() {
+            // 모달 닫을 때 입력값이 하나도 없는 핀이면 자동 삭제
+            if (activeIdx !== -1 && currentPinId !== null) {
+                const pins = blueprints[activeIdx].pins;
+                const pin = pins.find(p => p.id === currentPinId);
+                if (pin) {
+                    const isEmpty = !pin.process && !pin.roomName
+                        && !pin.beforeNote && !pin.afterNote
+                        && (!pin.beforePhotos || pin.beforePhotos.length === 0)
+                        && (!pin.afterPhotos  || pin.afterPhotos.length  === 0);
+                    if (isEmpty) {
+                        blueprints[activeIdx].pins = pins.filter(p => p.id !== currentPinId);
+                        reindexPins(blueprints[activeIdx].pins);
+                        syncDB(); renderPins(); renderRightList(); renderTree();
+                    }
+                }
+            }
+            document.getElementById('modal-overlay').style.display='none';
+            document.getElementById('report-modal').style.display='none';
+            document.getElementById('add-blueprint-modal').style.display='none';
+        }
+        
+        function handleCanvasClick(e) {
+            if(activeIdx === -1) return;
+            if(isDraggingPin) return;
+            const center = document.getElementById('content-center');
+            if(center._suppressClick) return;  // 드래그/핀치 후 핀 생성 방지
+            const img = document.getElementById('blueprint-display');
+            const r = img.getBoundingClientRect();
+            // 이미지 영역 밖 클릭 무시
+            if(e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+            const nx = ((e.clientX - r.left) / r.width)  * 100;
+            const ny = ((e.clientY - r.top)  / r.height) * 100;
+            const nextId = blueprints[activeIdx].pins.length + 1;
+            blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
+            renderPins(); openViewModal(nextId); toggleEditMode(true);
+        }
+
+        // 삭제 후 핀 번호를 1부터 순서대로 재정렬
+        function reindexPins(pins) {
+            pins.forEach((p, i) => { p.id = i + 1; });
+        }
+
+        async function deletePin() {
+            if (!confirm("핀을 삭제할까요?")) return;
+            blueprints[activeIdx].pins = blueprints[activeIdx].pins.filter(x => x.id != currentPinId);
+            reindexPins(blueprints[activeIdx].pins);
+            await syncDB();
+            renderPins(); renderRightList(); closeAllModals();
+        }
+
+        // ── JSON 백업 내보내기 ──
+        function exportJSON() {
+            const siteName = localStorage.getItem('siteName') || '현장';
+            const data = { siteName, blueprints };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+            saveAs(blob, `${siteName}_백업_${dateStr}.json`);
+        }
+
+        // ── JSON 불러오기 (덮어쓰기 또는 병합) ──
+        async function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            event.target.value = '';
+            const text = await file.text();
+            let parsed;
+            try { parsed = JSON.parse(text); } catch(e) { alert('올바른 JSON 파일이 아닙니다.'); return; }
+            if (!parsed.blueprints || !Array.isArray(parsed.blueprints)) { alert('형식이 맞지 않는 파일입니다.'); return; }
+
+            const choice = confirm(
+                `📂 불러오기 방식을 선택하세요.\n\n` +
+                `[확인] → 덮어쓰기: 현재 데이터를 모두 지우고 파일 내용으로 교체\n` +
+                `[취소] → 병합: 현재 데이터에 파일 내용을 추가`
+            );
+
+            if (choice) {
+                // 덮어쓰기
+                blueprints = parsed.blueprints;
+                if (parsed.siteName) {
+                    localStorage.setItem('siteName', parsed.siteName);
+                    document.getElementById('site-name-display').innerText = parsed.siteName;
+                }
+            } else {
+                // 병합 (동/층/공간명이 같은 경우 핀만 합치기)
+                for (const incoming of parsed.blueprints) {
+                    const existing = blueprints.find(b => b.dong === incoming.dong && b.floor === incoming.floor && b.room === incoming.room);
+                    if (existing) {
+                        const maxId = existing.pins.length > 0 ? Math.max(...existing.pins.map(p=>p.id)) : 0;
+                        incoming.pins.forEach((p, i) => { p.id = maxId + i + 1; existing.pins.push(p); });
+                    } else {
+                        blueprints.push(incoming);
+                    }
+                }
+            }
+            await syncDB();
+            activeIdx = -1;
+            document.getElementById('canvas-container').style.display = 'none';
+            document.getElementById('pin-summary-list').innerHTML = '';
+            renderTree();
+            alert('✅ 불러오기 완료!');
+        }
+
+        // ── 엑셀 내보내기 (사진 포함, A4 가로, 지정 양식) ──
+        async function exportExcel() {
+            if (!window.ExcelJS) { alert('ExcelJS 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.'); return; }
+            const siteName = localStorage.getItem('siteName') || '현장';
+
+            // 전체 핀 목록 수집
+            const rows = [];
+            let seq = 1;
+            for (const bp of blueprints) {
+                for (const pin of bp.pins) {
+                    rows.push({
+                        seq,
+                        dong: bp.dong || '',
+                        floor: bp.floor || '',
+                        room: bp.room || '',
+                        roomDetail: pin.roomName || '',
+                        process: pin.process || '',
+                        content: pin.beforeNote || '',
+                        beforePhotos: pin.beforePhotos || [],
+                        beforeDate: pin.beforeDate || '',
+                        afterPhotos: pin.afterPhotos || [],
+                        afterNote: pin.afterNote || '',
+                        afterDate: pin.afterDate || '',
+                        remark: ''
+                    });
+                    seq++;
+                }
+            }
+
+            if (rows.length === 0) { alert('내보낼 데이터가 없습니다.'); return; }
+
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Punch List Pro';
+            workbook.created = new Date();
+            const sheet = workbook.addWorksheet('품질검수보고서', {
+                pageSetup: {
+                    paperSize: 9,          // A4
+                    orientation: 'landscape',
+                    fitToPage: true,
+                    fitToWidth: 1,
+                    fitToHeight: 0,
+                    margins: { left: 0.5, right: 0.5, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 }
+                },
+                views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }]
+            });
+
+            // ── 열 너비 설정 (A4 가로 기준 비율) ──
+            sheet.columns = [
+                { key: 'seq',         width: 5  },   // A 순번
+                { key: 'dong',        width: 10 },   // B 동/건물명
+                { key: 'floor',       width: 8  },   // C 층
+                { key: 'room',        width: 10 },   // D 공간명
+                { key: 'roomDetail',  width: 10 },   // E 실명
+                { key: 'process',     width: 10 },   // F 공정
+                { key: 'content',     width: 20 },   // G 내용
+                { key: 'beforePhoto', width: 22 },   // H 점검 내용(사진)
+                { key: 'beforeDate',  width: 10 },   // I 점검일
+                { key: 'afterPhoto',  width: 22 },   // J 조치 결과(사진)
+                { key: 'afterDate',   width: 10 },   // K 조치일
+                { key: 'remark',      width: 12 },   // L 비고
+            ];
+
+            // ── 제목행 (Row 1) ──
+            const titleRow = sheet.getRow(1);
+            sheet.mergeCells('A1:L1');
+            titleRow.getCell(1).value = `Punch List / ${siteName}`;
+            titleRow.getCell(1).font = { name: '맑은 고딕', bold: true, size: 14 };
+            titleRow.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+            titleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2A3A' } };
+            titleRow.getCell(1).font = { name: '맑은 고딕', bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+            titleRow.height = 32;
+
+            // ── 헤더행 (Row 2) ──
+            const headers = ['순번','동/건물명','층','공간명','실명','공정','내용','점검 내용(사진)','점검일','조치 결과(사진)','조치일','비고'];
+            const headerRow = sheet.getRow(2);
+            headers.forEach((h, i) => {
+                const cell = headerRow.getCell(i + 1);
+                cell.value = h;
+                cell.font = { name: '맑은 고딕', bold: true, size: 10 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E4057' } };
+                cell.font = { name: '맑은 고딕', bold: true, size: 10, color: { argb: 'FFFFFFFF' } };
+                cell.border = {
+                    top: {style:'thin', color:{argb:'FFAAAAAA'}},
+                    left: {style:'thin', color:{argb:'FFAAAAAA'}},
+                    bottom: {style:'thin', color:{argb:'FFAAAAAA'}},
+                    right: {style:'thin', color:{argb:'FFAAAAAA'}}
+                };
+            });
+            headerRow.height = 30;
+
+            // ── 사진 행 높이 = 80pt (약 107px) ──
+            const ROW_HEIGHT_PHOTO = 80;
+            const ROW_HEIGHT_TEXT = 20;
+
+            // ── 데이터 행 작성 ──
+            const cellStyle = (cell) => {
+                cell.font = { name: '맑은 고딕', size: 10 };
+                cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+                cell.border = {
+                    top:    {style:'thin', color:{argb:'FFCCCCCC'}},
+                    left:   {style:'thin', color:{argb:'FFCCCCCC'}},
+                    bottom: {style:'thin', color:{argb:'FFCCCCCC'}},
+                    right:  {style:'thin', color:{argb:'FFCCCCCC'}}
+                };
+            };
+
+            // base64 → ArrayBuffer 변환
+            function base64ToBuffer(base64) {
+                const b64 = base64.split(',')[1] || base64;
+                const binary = atob(b64);
+                const buffer = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
+                return buffer.buffer;
+            }
+
+            // 이미지 삽입 헬퍼 (행 높이 꽉 채우기 + 중앙 정렬)
+            async function insertPhoto(base64, sheet, col, rowNum, rowHeightPt) {
+                try {
+                    const buffer = base64ToBuffer(base64);
+                    const ext = base64.includes('image/png') ? 'png' : 'jpeg';
+                    const imageId = workbook.addImage({ buffer, extension: ext });
+
+                    // 열 너비 22 기준 픽셀 변환 (Excel: 1 character width ≈ 7px + 5px padding)
+                    const COL_CHAR_WIDTH = 22;
+                    const COL_WIDTH_PX = COL_CHAR_WIDTH * 7 + 5;  // ≈ 159px
+
+                    // 행 높이 pt → px (Excel: 1pt = 1px in EMU context, 행높이는 pt 단위)
+                    // ExcelJS addImage ext는 화면 픽셀 기준 (96dpi: 1pt = 1.333px)
+                    const ROW_HEIGHT_PX = rowHeightPt * 1.333;
+
+                    // 여백 4px (상하좌우)
+                    const MARGIN = 4;
+                    const imgW = COL_WIDTH_PX - MARGIN * 2;
+                    const imgH = ROW_HEIGHT_PX - MARGIN * 2;
+
+                    // 중앙 정렬을 위한 오프셋(px)
+                    const offsetX = MARGIN;
+                    const offsetY = MARGIN;
+
+                    // ExcelJS: tl에 col/row는 0-based 정수, nativeCol/nativeRow 오프셋은 EMU(914400 = 1inch)
+                    // 픽셀 → EMU: 1px = 9525 EMU (96dpi 기준)
+                    const PX_TO_EMU = 9525;
+
+                    sheet.addImage(imageId, {
+                        tl: {
+                            col: col - 1,
+                            row: rowNum - 1,
+                            nativeColOff: offsetX * PX_TO_EMU,
+                            nativeRowOff: offsetY * PX_TO_EMU
+                        },
+                        br: {
+                            col: col,
+                            row: rowNum,
+                            nativeColOff: -offsetX * PX_TO_EMU,
+                            nativeRowOff: -offsetY * PX_TO_EMU
+                        },
+                        editAs: 'twoCell'
+                    });
+                } catch(e) { /* 이미지 삽입 실패 시 무시 */ }
+            }
+
+            let currentRow = 3;
+            for (const r of rows) {
+                const hasPhoto = r.beforePhotos.length > 0 || r.afterPhotos.length > 0;
+                const photoCount = Math.max(r.beforePhotos.length, r.afterPhotos.length, 1);
+                const rowHeight = hasPhoto ? ROW_HEIGHT_PHOTO : ROW_HEIGHT_TEXT;
+
+                for (let pi = 0; pi < photoCount; pi++) {
+                    const row = sheet.getRow(currentRow);
+                    row.height = rowHeight;
+
+                    // A: 순번 (첫 사진행에만)
+                    const cellA = row.getCell(1); cellStyle(cellA);
+                    cellA.value = pi === 0 ? r.seq : '';
+
+                    // B: 동/건물명
+                    const cellB = row.getCell(2); cellStyle(cellB);
+                    cellB.value = pi === 0 ? r.dong : '';
+
+                    // C: 층
+                    const cellC = row.getCell(3); cellStyle(cellC);
+                    cellC.value = pi === 0 ? r.floor : '';
+
+                    // D: 공간명
+                    const cellD = row.getCell(4); cellStyle(cellD);
+                    cellD.value = pi === 0 ? r.room : '';
+
+                    // E: 실명
+                    const cellE = row.getCell(5); cellStyle(cellE);
+                    cellE.value = pi === 0 ? r.roomDetail : '';
+
+                    // F: 공정
+                    const cellF = row.getCell(6); cellStyle(cellF);
+                    cellF.value = pi === 0 ? r.process : '';
+
+                    // G: 내용
+                    const cellG = row.getCell(7); cellStyle(cellG);
+                    cellG.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+                    cellG.value = pi === 0 ? r.content : '';
+
+                    // H: 점검 내용(사진) — 사진 삽입
+                    const cellH = row.getCell(8); cellStyle(cellH);
+                    cellH.value = '';
+                    if (r.beforePhotos[pi]) {
+                        await insertPhoto(r.beforePhotos[pi], sheet, 8, currentRow, rowHeight);
+                    }
+
+                    // I: 점검일 — YYYY-MM-DD 서식 통일
+                    const cellI = row.getCell(9); cellStyle(cellI);
+                    cellI.value = pi === 0 ? normalizeDate(r.beforeDate) : '';
+
+                    // J: 조치 결과(사진) — 사진 있으면 사진, 없으면 내용 텍스트
+                    const cellJ = row.getCell(10); cellStyle(cellJ);
+                    cellJ.value = '';
+                    if (r.afterPhotos[pi]) {
+                        // 사진 있으면 사진 삽입 (텍스트 무시)
+                        await insertPhoto(r.afterPhotos[pi], sheet, 10, currentRow, rowHeight);
+                    } else if (pi === 0 && !r.afterPhotos.length && r.afterNote) {
+                        // 사진 없고 내용(텍스트)만 있으면 텍스트 표시
+                        cellJ.value = r.afterNote;
+                        cellJ.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+                    }
+
+                    // K: 조치일 — YYYY-MM-DD 서식 통일
+                    const cellK = row.getCell(11); cellStyle(cellK);
+                    cellK.value = pi === 0 ? normalizeDate(r.afterDate) : '';
+
+                    // L: 비고
+                    const cellL = row.getCell(12); cellStyle(cellL);
+                    cellL.value = pi === 0 ? r.remark : '';
+
+                    // 짝수 행 배경
+                    if (r.seq % 2 === 0) {
+                        [cellA,cellB,cellC,cellD,cellE,cellF,cellG,cellH,cellI,cellJ,cellK,cellL].forEach(c => {
+                            if (!c.value && !hasPhoto) {
+                                c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF7F9FC'} };
+                            } else {
+                                c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF7F9FC'} };
+                            }
+                        });
+                    }
+
+                    currentRow++;
+                }
+            }
+
+            // 생성 후 다운로드
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, `${siteName}_품질검수보고서_${dateStr}.xlsx`);
+            alert(`✅ 엑셀 내보내기 완료!\n총 ${rows.length}건 (${seq-1}개 핀)`);
+        }
+    </script>
+    <!-- 트리 롱클릭 컨텍스트 메뉴 -->
+    <div id="tree-context-menu">
+        <div class="menu-title" id="ctx-menu-title">항목 관리</div>
+        <button id="ctx-btn-rename" onmousedown="ctx_renameItem(event)" ontouchend="ctx_renameItem(event)">✏️ 이름 변경</button>
+        <button id="ctx-btn-delete" class="danger" onmousedown="ctx_deleteItem(event)" ontouchend="ctx_deleteItem(event)">🗑️ 삭제</button>
+    </div>
+
+    <script>
+        // ── 트리 롱클릭 컨텍스트 메뉴 ──
+        let ctxTarget = null;
+        let ctxMenuOpen = false;
+
+        function closeCtxMenu() {
+            if (!ctxMenuOpen) return;
+            document.getElementById('tree-context-menu').style.display = 'none';
+            ctxMenuOpen = false;
+        }
+
+        // mousedown이 아닌 pointerdown 기준으로 외부 클릭 감지 — prompt/confirm 이후 blur 간섭 없음
+        document.addEventListener('pointerdown', (e) => {
+            if (ctxMenuOpen && !document.getElementById('tree-context-menu').contains(e.target)) {
+                closeCtxMenu();
+            }
+        });
+
+        function showCtxMenu(x, y, target) {
+            ctxTarget = target;
+            const menu = document.getElementById('tree-context-menu');
+            const label = target.type === 'dong' ? `📁 ${target.dong}`
+                        : target.type === 'floor' ? `📂 ${target.floor}`
+                        : `📄 ${target.label}`;
+            document.getElementById('ctx-menu-title').textContent = label;
+
+            menu.style.display = 'block';
+            // 화면 밖으로 나가지 않도록 조정
+            requestAnimationFrame(() => {
+                const mw = menu.offsetWidth, mh = menu.offsetHeight;
+                menu.style.left = Math.min(x, window.innerWidth  - mw - 8) + 'px';
+                menu.style.top  = Math.min(y, window.innerHeight - mh - 8) + 'px';
+            });
+            ctxMenuOpen = true;
+        }
+
+        // 롱프레스 부착 — mousedown/touchstart에서 타이머 시작, 600ms 후 메뉴 표시
+        function attachLongPress(el, targetFn) {
+            let timer = null;
+            let didLong = false; // 롱프레스 발동 여부
+
+            function start(x, y) {
+                didLong = false;
+                timer = setTimeout(() => {
+                    didLong = true;
+                    showCtxMenu(x, y, targetFn());
+                }, 600);
+            }
+            function cancel() { clearTimeout(timer); }
+
+            // 마우스
+            el.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                start(e.clientX, e.clientY);
+            });
+            el.addEventListener('mousemove', cancel);
+            el.addEventListener('mouseup',   cancel);
+            el.addEventListener('mouseleave',cancel);
+            // 롱프레스가 발동된 경우 뒤따르는 click이 toggleTree를 호출하지 않도록 차단
+            el.addEventListener('click', (e) => { if (didLong) { e.stopImmediatePropagation(); didLong = false; } });
+
+            // 터치
+            el.addEventListener('touchstart', (e) => {
+                const t = e.touches[0];
+                start(t.clientX, t.clientY);
+            }, { passive: true });
+            el.addEventListener('touchmove',   cancel, { passive: true });
+            el.addEventListener('touchend',    cancel);
+            el.addEventListener('touchcancel', cancel);
+
+            // PC 우클릭
+            el.addEventListener('contextmenu', (e) => { e.preventDefault(); showCtxMenu(e.clientX, e.clientY, targetFn()); });
+        }
+
+        // ── 메뉴 버튼 액션 (onmousedown/ontouchend 사용 — click보다 먼저 실행됨) ──
+        function ctx_renameItem(e) {
+            e.preventDefault(); e.stopPropagation();
+            const t = Object.assign({}, ctxTarget);  // 로컬 복사 후 메뉴 닫기
+            closeCtxMenu();
+            // setTimeout으로 DOM 정리 후 prompt 실행 (버블링 완전 종료 후)
+            setTimeout(() => {
+                let val;
+                if (t.type === 'dong') {
+                    val = prompt('동/건물명 변경:', t.dong);
+                    if (!val || !val.trim()) return;
+                    blueprints.forEach(bp => { if (bp.dong === t.dong) bp.dong = val.trim(); });
+                } else if (t.type === 'floor') {
+                    val = prompt('층 이름 변경:', t.floor);
+                    if (!val || !val.trim()) return;
+                    blueprints.forEach(bp => { if (bp.dong === t.dong && bp.floor === t.floor) bp.floor = val.trim(); });
+                } else {
+                    val = prompt('공간명 변경:', t.label);
+                    if (!val || !val.trim()) return;
+                    blueprints[t.roomIndex].room = val.trim();
+                }
+                syncDB(); renderTree();
+            }, 50);
+        }
+
+        async function ctx_deleteItem(e) {
+            e.preventDefault(); e.stopPropagation();
+            const t = Object.assign({}, ctxTarget);
+            closeCtxMenu();
+            setTimeout(async () => {
+                if (t.type === 'dong') {
+                    if (!confirm(`'${t.dong}' 동 전체와 하위 도면/핀을 모두 삭제할까요?`)) return;
+                    blueprints = blueprints.filter(bp => bp.dong !== t.dong);
+                    if (activeIdx !== -1 && !blueprints[activeIdx]) resetActive();
+                } else if (t.type === 'floor') {
+                    if (!confirm(`'${t.dong} ${t.floor}' 층 전체와 하위 도면/핀을 모두 삭제할까요?`)) return;
+                    const removedIdxs = blueprints.map((bp,i) => (bp.dong===t.dong && bp.floor===t.floor) ? i : -1).filter(i=>i>=0);
+                    blueprints = blueprints.filter(bp => !(bp.dong===t.dong && bp.floor===t.floor));
+                    if (removedIdxs.includes(activeIdx)) { resetActive(); }
+                    else { let shift = removedIdxs.filter(i=>i<activeIdx).length; activeIdx -= shift; }
+                } else {
+                    if (!confirm(`'${t.label}' 도면과 핀 데이터를 삭제할까요?`)) return;
+                    blueprints.splice(t.roomIndex, 1);
+                    if (activeIdx === t.roomIndex) resetActive();
+                    else if (activeIdx > t.roomIndex) activeIdx--;
+                }
+                await syncDB(); renderTree();
+            }, 50);
+        }
+
+        function resetActive() {
+            activeIdx = -1;
+            document.getElementById('canvas-container').style.display = 'none';
+            document.getElementById('pin-summary-list').innerHTML = '';
+        }
+    </script>
+
+    <!-- 사진 라이트박스 -->
+    <div id="lightbox" onclick="lbClose(event)">
+        <button id="lightbox-close" onclick="closeLightbox()">✕</button>
+        <img id="lightbox-img" src="" alt="">
+        <div id="lightbox-scale-badge"></div>
+        <div id="lightbox-zoom-btns">
+            <button onclick="lbZoomStep(1.3);event.stopPropagation()">＋</button>
+            <button onclick="lbReset();event.stopPropagation()" style="font-size:15px;">⊡</button>
+            <button onclick="lbZoomStep(1/1.3);event.stopPropagation()">－</button>
+        </div>
+    </div>
+
+    <!-- 사진 라이트박스 JS -->
+    <script>
+      let _lbScale = 1, _lbTx = 0, _lbTy = 0;
+      const LB_MAX = 8, LB_MIN = 1;
+      let _lbBadgeTimer = null;
+
+      function openLightbox(src) {
+          const lb = document.getElementById('lightbox');
+          const img = document.getElementById('lightbox-img');
+          img.src = src;
+          _lbScale = 1; _lbTx = 0; _lbTy = 0;
+          _lbApply();
+          lb.classList.add('open');
+          document.body.style.overflow = 'hidden';
+      }
+      function closeLightbox() {
+          document.getElementById('lightbox').classList.remove('open');
+          document.getElementById('lightbox-img').src = '';
+          document.body.style.overflow = '';
+      }
+      function lbClose(e) { if (e.target === document.getElementById('lightbox')) closeLightbox(); }
+
+      function _lbApply() {
+          const img = document.getElementById('lightbox-img');
+          img.style.transform = `translate(${_lbTx}px, ${_lbTy}px) scale(${_lbScale})`;
+      }
+      function _lbClamp() {
+          // scale=1이면 중앙 고정
+          if (_lbScale <= 1) { _lbTx = 0; _lbTy = 0; return; }
+          const img = document.getElementById('lightbox-img');
+          const iw = img.offsetWidth * _lbScale, ih = img.offsetHeight * _lbScale;
+          const vw = window.innerWidth, vh = window.innerHeight;
+          const maxX = Math.max(0, (iw - vw) / 2);
+          const maxY = Math.max(0, (ih - vh) / 2);
+          _lbTx = Math.min(maxX, Math.max(-maxX, _lbTx));
+          _lbTy = Math.min(maxY, Math.max(-maxY, _lbTy));
+      }
+      function _lbShowBadge() {
+          const b = document.getElementById('lightbox-scale-badge');
+          b.textContent = Math.round(_lbScale * 100) + '%';
+          b.style.display = 'block';
+          clearTimeout(_lbBadgeTimer);
+          _lbBadgeTimer = setTimeout(() => b.style.display = 'none', 1400);
+      }
+      function lbZoomStep(factor, cx, cy) {
+          const vw = window.innerWidth, vh = window.innerHeight;
+          const px = cx !== undefined ? cx : vw / 2;
+          const py = cy !== undefined ? cy : vh / 2;
+          const newScale = Math.min(LB_MAX, Math.max(LB_MIN, _lbScale * factor));
+          const ratio = newScale / _lbScale;
+          _lbTx = px - ratio * (px - _lbTx); // 사실상 translate 보정
+          _lbTy = py - ratio * (py - _lbTy);
+          _lbScale = newScale;
+          _lbClamp(); _lbApply(); _lbShowBadge();
+      }
+      function lbReset() { _lbScale = 1; _lbTx = 0; _lbTy = 0; _lbApply(); _lbShowBadge(); }
+
+      // 마우스 휠
+      document.getElementById('lightbox').addEventListener('wheel', e => {
+          if (!document.getElementById('lightbox').classList.contains('open')) return;
+          e.preventDefault();
+          const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+          lbZoomStep(factor, e.clientX, e.clientY);
+      }, { passive: false });
+
+      // 마우스 드래그 패닝
+      (function() {
+          const lb = document.getElementById('lightbox');
+          let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+          lb.addEventListener('mousedown', e => {
+              if (e.target.tagName === 'BUTTON') return;
+              drag = true; sx = e.clientX; sy = e.clientY; ox = _lbTx; oy = _lbTy;
+              document.getElementById('lightbox-img').classList.add('panning');
+              e.preventDefault();
+          });
+          document.addEventListener('mousemove', e => {
+              if (!drag) return;
+              _lbTx = ox + e.clientX - sx; _lbTy = oy + e.clientY - sy;
+              _lbClamp(); _lbApply();
+          });
+          document.addEventListener('mouseup', () => {
+              drag = false;
+              document.getElementById('lightbox-img').classList.remove('panning');
+          });
+      })();
+
+      // 터치 핀치줌 + 패닝
+      (function() {
+          const lb = document.getElementById('lightbox');
+          let ts = [], initDist = 0, initScale = 1, initTx = 0, initTy = 0, initMx = 0, initMy = 0;
+          function dist(a,b){ return Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY); }
+          function mid(a,b){ return {x:(a.clientX+b.clientX)/2, y:(a.clientY+b.clientY)/2}; }
+
+          lb.addEventListener('touchstart', e => {
+              ts = Array.from(e.touches);
+              if (ts.length === 2) {
+                  initDist = dist(ts[0],ts[1]); initScale = _lbScale;
+                  initTx = _lbTx; initTy = _lbTy;
+                  const m = mid(ts[0],ts[1]); initMx = m.x; initMy = m.y;
+              } else if (ts.length === 1) {
+                  initTx = _lbTx; initTy = _lbTy;
+                  initMx = ts[0].clientX; initMy = ts[0].clientY;
+              }
+              e.stopPropagation();
+          }, { passive: true });
+
+          lb.addEventListener('touchmove', e => {
+              const t = Array.from(e.touches);
+              if (t.length === 2) {
+                  e.preventDefault();
+                  const curDist = dist(t[0],t[1]);
+                  const factor = curDist / initDist;
+                  const newScale = Math.min(LB_MAX, Math.max(LB_MIN, initScale * factor));
+                  const ratio = newScale / initScale;
+                  const m = mid(t[0],t[1]);
+                  _lbScale = newScale;
+                  _lbTx = m.x - ratio * (initMx - initTx);
+                  _lbTy = m.y - ratio * (initMy - initTy);
+                  _lbClamp(); _lbApply(); _lbShowBadge();
+              } else if (t.length === 1 && _lbScale > 1) {
+                  e.preventDefault();
+                  _lbTx = initTx + t[0].clientX - initMx;
+                  _lbTy = initTy + t[0].clientY - initMy;
+                  _lbClamp(); _lbApply();
+              }
+          }, { passive: false });
+      })();
+    </script>
+
+    <!-- 전체 핀치줌 차단: content-center와 미리보기 모달 내부만 허용 -->
+    <script>
+      function _isInsideAllowed(target) {
+        let el = target;
+        while (el) {
+          if (el.id === 'content-center' || el.id === 'report-modal' || el.id === 'lightbox') return true;
+          el = el.parentElement;
+        }
+        return false;
+      }
+      document.addEventListener('touchmove', function(e) {
+        if (e.touches.length >= 2 && !_isInsideAllowed(e.target)) e.preventDefault();
+      }, { passive: false });
+      document.addEventListener('gesturestart',  function(e) { if (!_isInsideAllowed(e.target)) e.preventDefault(); }, { passive: false });
+      document.addEventListener('gesturechange', function(e) { if (!_isInsideAllowed(e.target)) e.preventDefault(); }, { passive: false });
+    </script>
+
+    <!-- PWA 설치 + SW -->
+    <script>
+      let _pwaPrompt = null;
+
+      // 이미 설치된 상태(standalone)면 오버레이 절대 표시 안 함
+      const _isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+      window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        _pwaPrompt = e;
+        if (!_isStandalone) {
+          document.getElementById('pwa-install-overlay').classList.add('show');
+        }
+      });
+
+      window.addEventListener('appinstalled', () => {
+        document.getElementById('pwa-install-overlay').classList.remove('show');
+        _pwaPrompt = null;
+      });
+
+      function pwaBtnInstall() {
+        if (!_pwaPrompt) return;
+        _pwaPrompt.prompt();
+        _pwaPrompt.userChoice.then(r => {
+          document.getElementById('pwa-install-overlay').classList.remove('show');
+          _pwaPrompt = null;
+        });
+      }
+
+      function pwaDismiss() {
+        document.getElementById('pwa-install-overlay').classList.remove('show');
+      }
+
+      // Service Worker 등록 + 새 버전 감지 시 자동 새로고침
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/quality-inspection/sw.js')
+            .then(reg => {
+              console.log('SW:', reg.scope);
+              // 새 SW 대기 중이면 즉시 활성화 요청
+              reg.addEventListener('updatefound', () => {
+                const newWorker = reg.installing;
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'activated') {
+                    console.log('SW 업데이트 완료 — 새로고침');
+                    window.location.reload();
+                  }
+                });
+              });
+            })
+            .catch(e => console.warn('SW 실패:', e));
+
+          // SW에서 SW_UPDATED 메시지 수신 시 새로고침
+          navigator.serviceWorker.addEventListener('message', e => {
+            if (e.data && e.data.type === 'SW_UPDATED') {
+              console.log('새 버전 감지 — 자동 새로고침');
+              window.location.reload();
+            }
+          });
+        });
+      }
+    </script>
+</body>
+</html>
