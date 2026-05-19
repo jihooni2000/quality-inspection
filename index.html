@@ -351,25 +351,29 @@
             <!-- 편집 모드 -->
             <div id="edit-mode" style="display:none;">
                 <h3 style="margin-top:0; font-size:var(--fs-title); color:var(--text-primary); font-family:'IBM Plex Sans KR',sans-serif;">상세 기록 수정</h3>
-                <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; display:block; margin-bottom:7px;">🔧 공정</label>
-                <div id="process-chips" style="display:flex; flex-wrap:wrap; margin-bottom:14px;"></div>
-                <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; display:block; margin-bottom:7px;">🚪 실명</label>
-                <div id="room-chips" style="display:flex; flex-wrap:wrap; margin-bottom:15px;"></div>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:14px;">
+                  <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; white-space:nowrap; margin:0;">🔧 공정</label>
+                  <div id="process-chips" style="display:flex; flex-wrap:wrap; gap:0; flex:1;"></div>
+                </div>
+                <div style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:15px;">
+                  <label style="font-size:var(--fs-sub); color:var(--text-secondary); font-weight:600; white-space:nowrap; margin:0;">🚪 실명</label>
+                  <div id="room-chips" style="display:flex; flex-wrap:wrap; gap:0; flex:1;"></div>
+                </div>
                 <label style="color:var(--danger); font-weight:700; font-size:var(--fs-sub);">📋 점검 내용</label>
                 <textarea id="note-before" placeholder="점검 내용을 입력하세요"></textarea>
-                <div style="display:flex; gap:6px; margin-bottom:10px;">
-                    <button onclick="triggerUpload('before', 'camera')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">📷 촬영</button>
-                    <button onclick="triggerUpload('before', 'gallery')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🖼️ 갤러리</button>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                    <button onclick="triggerUpload('before', 'camera')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">📷 촬영</button>
+                    <button onclick="triggerUpload('before', 'gallery')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">🖼️ 갤러리</button>
+                    <div id="thumbs-before" class="thumb-container" style="flex:1; margin-bottom:0;"></div>
                 </div>
-                <div id="thumbs-before" class="thumb-container"></div>
                 <hr style="margin:18px 0; border:0; border-top:1px solid var(--border);">
                 <label style="color:var(--success); font-weight:700; font-size:var(--fs-sub);">✅ 조치 결과</label>
                 <textarea id="note-after" placeholder="조치 결과를 입력하세요"></textarea>
-                <div style="display:flex; gap:6px; margin-bottom:10px;">
-                    <button onclick="triggerUpload('after', 'camera')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">📷 촬영</button>
-                    <button onclick="triggerUpload('after', 'gallery')" style="flex:1; padding:11px; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif;">🖼️ 갤러리</button>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+                    <button onclick="triggerUpload('after', 'camera')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">📷 촬영</button>
+                    <button onclick="triggerUpload('after', 'gallery')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">🖼️ 갤러리</button>
+                    <div id="thumbs-after" class="thumb-container" style="flex:1; margin-bottom:0;"></div>
                 </div>
-                <div id="thumbs-after" class="thumb-container"></div>
                 <button onclick="saveData()" style="width:100%; padding:16px; background:var(--accent); color:white; border:none; border-radius:12px; font-size:var(--fs-sub); font-weight:700; margin-top:20px; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; box-shadow:0 4px 20px var(--accent-glow);">💾 저장 완료</button>
             </div>
         </div>
