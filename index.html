@@ -96,7 +96,6 @@
 
         /* Canvas center */
         #content-center { flex: 1; overflow: hidden; background: radial-gradient(ellipse at center, #1a2535 0%, #0f1923 70%); position: relative; touch-action: none; }
-        #canvas-container { touch-action: none; }
         #content-center::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
         #zoom-viewport { width: 100%; height: 100%; position: relative; display: flex; justify-content: center; align-items: center; z-index: 1; }
         #canvas-container { position: absolute; display: none; box-shadow: 0 8px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06); user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; transform-origin: 0 0; cursor: grab; border-radius: 2px; }
@@ -257,7 +256,7 @@
         <aside id="sidebar-right"><div id="pin-summary-list"></div></aside>
     </main>
 
-    <div class="modal-overlay" id="modal-overlay" onclick="if(!document.getElementById('content-center')._suppressClick) closeAllModals()"></div>
+    <div class="modal-overlay" id="modal-overlay" onclick="closeAllModals()"></div>
 
     <!-- 데이터 삭제 선택 모달 -->
     <div id="delete-data-modal" style="display:none; position:fixed; inset:0; z-index:9000; justify-content:center; align-items:center; display:none; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);">
@@ -1534,7 +1533,6 @@
             document.getElementById('add-blueprint-modal').style.display='none';
         }
         
-
         function handleCanvasClick(e) {
             if(activeIdx === -1) return;
             if(isDraggingPin) return;
@@ -1551,62 +1549,42 @@
             renderPins(); openViewModal(nextId); toggleEditMode(true);
         }
 
-        // ── 펜(Apple Pencil / 안드로이드 펜 / 마우스) 핀 입력 — pointer 이벤트 기반 ──
+        // Apple Pencil(styluspen) 지원 — pointerdown 이벤트로 핀 입력
         (function() {
             const canvas = document.getElementById('canvas-container');
-            const center = document.getElementById('content-center');
-            let penStartX = null, penStartY = null, penPointerId = null, penMoved = false;
-
-            // pointerdown: pen과 mouse 모두 처리 (touch는 기존 touchstart로 처리)
             canvas.addEventListener('pointerdown', function(e) {
+                // 손가락(touch)은 기존 touchstart/click 이벤트로 처리, 펜/마우스만 여기서 처리
                 if (e.pointerType === 'touch') return;
                 if (activeIdx === -1) return;
-                if (e.target.classList.contains('pin')) return;
-                penStartX = e.clientX;
-                penStartY = e.clientY;
-                penPointerId = e.pointerId;
-                penMoved = false;
-                try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
-            }, { passive: true });
-
-            canvas.addEventListener('pointermove', function(e) {
-                if (e.pointerType === 'touch') return;
-                if (penPointerId === null || e.pointerId !== penPointerId) return;
-                if (Math.abs(e.clientX - penStartX) > 25 || Math.abs(e.clientY - penStartY) > 25) {
-                    penMoved = true;
-                }
-            }, { passive: true });
-
-            canvas.addEventListener('pointerup', function(e) {
-                if (e.pointerType === 'touch') return;
-                if (penPointerId === null || e.pointerId !== penPointerId) return;
-                const savedX = penStartX, savedY = penStartY;
-                const moved = penMoved;
-                penPointerId = null;
-                penMoved = false;
-                if (moved) return;
                 if (isDraggingPin) return;
+                const center = document.getElementById('content-center');
                 if (center._suppressClick) return;
-                if (activeIdx === -1) return;
+                // 핀 위 클릭은 무시 (핀 열기는 기존 로직)
+                if (e.target.classList.contains('pin')) return;
                 const img = document.getElementById('blueprint-display');
                 const r = img.getBoundingClientRect();
-                if (savedX < r.left || savedX > r.right || savedY < r.top || savedY > r.bottom) return;
-                const nx = ((savedX - r.left) / r.width) * 100;
-                const ny = ((savedY - r.top) / r.height) * 100;
-                const nextId = blueprints[activeIdx].pins.length + 1;
-                // 모달이 열린 직후 click 이벤트로 닫히지 않도록 먼저 차단
-                center._suppressClick = true;
-                blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
-                renderPins(); openViewModal(nextId); toggleEditMode(true);
-                // 펜 click 이벤트 차단을 충분히 길게 유지
-                setTimeout(() => { center._suppressClick = false; }, 600);
-            }, { passive: true });
-
-            canvas.addEventListener('pointercancel', function(e) {
-                if (e.pointerType === 'touch') return;
-                penPointerId = null;
-                penMoved = false;
-            }, { passive: true });
+                if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+                // 펜 드래그와 구분: pointerup까지 이동이 없을 때만 핀 생성
+                const startX = e.clientX, startY = e.clientY;
+                function onUp(ev) {
+                    canvas.removeEventListener('pointerup', onUp);
+                    canvas.removeEventListener('pointercancel', onUp);
+                    const moved = Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6;
+                    if (moved) return;
+                    if (isDraggingPin) return;
+                    if (center._suppressClick) return;
+                    const nx = ((startX - r.left) / r.width) * 100;
+                    const ny = ((startY - r.top) / r.height) * 100;
+                    const nextId = blueprints[activeIdx].pins.length + 1;
+                    blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
+                    renderPins(); openViewModal(nextId); toggleEditMode(true);
+                    // click 이벤트 중복 방지
+                    center._suppressClick = true;
+                    setTimeout(() => { center._suppressClick = false; }, 100);
+                }
+                canvas.addEventListener('pointerup', onUp);
+                canvas.addEventListener('pointercancel', onUp);
+            });
         })();
 
         // 삭제 후 핀 번호를 1부터 순서대로 재정렬
