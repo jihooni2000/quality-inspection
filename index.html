@@ -1549,9 +1549,11 @@
             renderPins(); openViewModal(nextId); toggleEditMode(true);
         }
 
-        // Apple Pencil(styluspen) 지원 — pointerdown 이벤트로 핀 입력
+        // Apple Pencil / 안드로이드 펜 지원 — pointerdown 이벤트로 핀 입력
         (function() {
             const canvas = document.getElementById('canvas-container');
+            let penStartX = null, penStartY = null, penActive = false;
+
             canvas.addEventListener('pointerdown', function(e) {
                 // 손가락(touch)은 기존 touchstart/click 이벤트로 처리, 펜/마우스만 여기서 처리
                 if (e.pointerType === 'touch') return;
@@ -1559,31 +1561,46 @@
                 if (isDraggingPin) return;
                 const center = document.getElementById('content-center');
                 if (center._suppressClick) return;
-                // 핀 위 클릭은 무시 (핀 열기는 기존 로직)
                 if (e.target.classList.contains('pin')) return;
                 const img = document.getElementById('blueprint-display');
                 const r = img.getBoundingClientRect();
                 if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-                // 펜 드래그와 구분: pointerup까지 이동이 없을 때만 핀 생성
-                const startX = e.clientX, startY = e.clientY;
-                function onUp(ev) {
-                    canvas.removeEventListener('pointerup', onUp);
-                    canvas.removeEventListener('pointercancel', onUp);
-                    const moved = Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6;
-                    if (moved) return;
-                    if (isDraggingPin) return;
-                    if (center._suppressClick) return;
-                    const nx = ((startX - r.left) / r.width) * 100;
-                    const ny = ((startY - r.top) / r.height) * 100;
-                    const nextId = blueprints[activeIdx].pins.length + 1;
-                    blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
-                    renderPins(); openViewModal(nextId); toggleEditMode(true);
-                    // click 이벤트 중복 방지
-                    center._suppressClick = true;
-                    setTimeout(() => { center._suppressClick = false; }, 100);
-                }
-                canvas.addEventListener('pointerup', onUp);
-                canvas.addEventListener('pointercancel', onUp);
+                // 펜 시작 위치 저장
+                penStartX = e.clientX;
+                penStartY = e.clientY;
+                penActive = true;
+                // 안드로이드 펜: pointerId 캡처로 canvas 밖 pointerup도 감지
+                try { canvas.setPointerCapture(e.pointerId); } catch(err) {}
+            });
+
+            // pointerup을 document 레벨에서 감지 (안드로이드 펜이 canvas 밖에서 up될 때도 처리)
+            document.addEventListener('pointerup', function(e) {
+                if (!penActive) return;
+                if (e.pointerType === 'touch') return;
+                penActive = false;
+                if (activeIdx === -1) return;
+                if (isDraggingPin) return;
+                const center = document.getElementById('content-center');
+                if (center._suppressClick) return;
+                // 드래그 여부 확인 (10px 이상 움직이면 핀 생성 안 함)
+                const moved = Math.abs(e.clientX - penStartX) > 10 || Math.abs(e.clientY - penStartY) > 10;
+                if (moved) return;
+                const img = document.getElementById('blueprint-display');
+                const r = img.getBoundingClientRect();
+                if (penStartX < r.left || penStartX > r.right || penStartY < r.top || penStartY > r.bottom) return;
+                const nx = ((penStartX - r.left) / r.width) * 100;
+                const ny = ((penStartY - r.top) / r.height) * 100;
+                const nextId = blueprints[activeIdx].pins.length + 1;
+                blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
+                renderPins(); openViewModal(nextId); toggleEditMode(true);
+                // click 이벤트 중복 방지
+                center._suppressClick = true;
+                setTimeout(() => { center._suppressClick = false; }, 150);
+            });
+
+            document.addEventListener('pointercancel', function(e) {
+                if (e.pointerType === 'touch') return;
+                penActive = false;
             });
         })();
 
