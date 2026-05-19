@@ -362,16 +362,16 @@
                 <label style="color:var(--danger); font-weight:700; font-size:var(--fs-sub);">📋 점검 내용</label>
                 <textarea id="note-before" placeholder="점검 내용을 입력하세요"></textarea>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-                    <button onclick="triggerUpload('before', 'camera')" style="width:76px; height:76px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;">📷<span>촬영</span></button>
-                    <button onclick="triggerUpload('before', 'gallery')" style="width:76px; height:76px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;">🖼️<span>갤러리</span></button>
+                    <button onclick="triggerUpload('before', 'camera')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">📷 촬영</button>
+                    <button onclick="triggerUpload('before', 'gallery')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">🖼️ 갤러리</button>
                     <div id="thumbs-before" class="thumb-container" style="flex:1; margin-bottom:0;"></div>
                 </div>
                 <hr style="margin:18px 0; border:0; border-top:1px solid var(--border);">
                 <label style="color:var(--success); font-weight:700; font-size:var(--fs-sub);">✅ 조치 결과</label>
                 <textarea id="note-after" placeholder="조치 결과를 입력하세요"></textarea>
                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
-                    <button onclick="triggerUpload('after', 'camera')" style="width:76px; height:76px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;">📷<span>촬영</span></button>
-                    <button onclick="triggerUpload('after', 'gallery')" style="width:76px; height:76px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;">🖼️<span>갤러리</span></button>
+                    <button onclick="triggerUpload('after', 'camera')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">📷 촬영</button>
+                    <button onclick="triggerUpload('after', 'gallery')" style="width:100px; height:50px; flex-shrink:0; font-size:var(--fs-sub); font-weight:600; border:1px solid var(--border-bright); border-radius:8px; background:var(--surface2); color:var(--text-secondary); cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px;">🖼️ 갤러리</button>
                     <div id="thumbs-after" class="thumb-container" style="flex:1; margin-bottom:0;"></div>
                 </div>
                 <button onclick="saveData()" style="width:100%; padding:16px; background:var(--accent); color:white; border:none; border-radius:12px; font-size:var(--fs-sub); font-weight:700; margin-top:20px; cursor:pointer; font-family:'IBM Plex Sans KR',sans-serif; box-shadow:0 4px 20px var(--accent-glow);">💾 저장 완료</button>
@@ -1548,44 +1548,6 @@
             blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
             renderPins(); openViewModal(nextId); toggleEditMode(true);
         }
-
-        // Apple Pencil(styluspen) 지원 — pointerdown 이벤트로 핀 입력
-        (function() {
-            const canvas = document.getElementById('canvas-container');
-            canvas.addEventListener('pointerdown', function(e) {
-                // 손가락(touch)은 기존 touchstart/click 이벤트로 처리, 펜/마우스만 여기서 처리
-                if (e.pointerType === 'touch') return;
-                if (activeIdx === -1) return;
-                if (isDraggingPin) return;
-                const center = document.getElementById('content-center');
-                if (center._suppressClick) return;
-                // 핀 위 클릭은 무시 (핀 열기는 기존 로직)
-                if (e.target.classList.contains('pin')) return;
-                const img = document.getElementById('blueprint-display');
-                const r = img.getBoundingClientRect();
-                if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-                // 펜 드래그와 구분: pointerup까지 이동이 없을 때만 핀 생성
-                const startX = e.clientX, startY = e.clientY;
-                function onUp(ev) {
-                    canvas.removeEventListener('pointerup', onUp);
-                    canvas.removeEventListener('pointercancel', onUp);
-                    const moved = Math.abs(ev.clientX - startX) > 6 || Math.abs(ev.clientY - startY) > 6;
-                    if (moved) return;
-                    if (isDraggingPin) return;
-                    if (center._suppressClick) return;
-                    const nx = ((startX - r.left) / r.width) * 100;
-                    const ny = ((startY - r.top) / r.height) * 100;
-                    const nextId = blueprints[activeIdx].pins.length + 1;
-                    blueprints[activeIdx].pins.push({id:nextId, x:nx, y:ny, process:'', roomName:'', beforeNote:'', afterNote:'', beforePhotos:[], afterPhotos:[], beforeDate:'', afterDate:''});
-                    renderPins(); openViewModal(nextId); toggleEditMode(true);
-                    // click 이벤트 중복 방지
-                    center._suppressClick = true;
-                    setTimeout(() => { center._suppressClick = false; }, 100);
-                }
-                canvas.addEventListener('pointerup', onUp);
-                canvas.addEventListener('pointercancel', onUp);
-            });
-        })();
 
         // 삭제 후 핀 번호를 1부터 순서대로 재정렬
         function reindexPins(pins) {
