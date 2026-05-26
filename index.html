@@ -1876,6 +1876,9 @@
                 views: [{ state: 'frozen', xSplit: 0, ySplit: 2 }]
             });
 
+            // 인쇄 시 2행만 반복 (헤더행만, 제목행 제외)
+            sheet.pageSetup.printTitlesRow = '2:2';
+
             // ── 열 너비 설정 (A4 가로 기준 비율) ──
             sheet.columns = [
                 { key: 'seq',         width: 5  },   // A 순번
