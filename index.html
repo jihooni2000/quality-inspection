@@ -1795,12 +1795,28 @@
                     document.getElementById('site-name-display').innerText = parsed.siteName;
                 }
             } else {
-                // 병합 (동/층/공간명이 같은 경우 핀만 합치기)
+                // 병합 — 동/층/공간명이 같은 경우 핀 합치기 (완전 동일 핀은 중복 추가 안 함)
                 for (const incoming of parsed.blueprints) {
                     const existing = blueprints.find(b => b.dong === incoming.dong && b.floor === incoming.floor && b.room === incoming.room);
                     if (existing) {
-                        const maxId = existing.pins.length > 0 ? Math.max(...existing.pins.map(p=>p.id)) : 0;
-                        incoming.pins.forEach((p, i) => { p.id = maxId + i + 1; existing.pins.push(p); });
+                        let addedCount = 0;
+                        for (const np of incoming.pins) {
+                            // 위치(x,y) + 공정 + 실명 + 점검내용 + 조치내용이 모두 같으면 중복으로 판단
+                            const isDuplicate = existing.pins.some(ep =>
+                                Math.abs(ep.x - np.x) < 0.01 &&
+                                Math.abs(ep.y - np.y) < 0.01 &&
+                                (ep.process   || '') === (np.process   || '') &&
+                                (ep.roomName  || '') === (np.roomName  || '') &&
+                                (ep.beforeNote|| '') === (np.beforeNote|| '') &&
+                                (ep.afterNote || '') === (np.afterNote || '')
+                            );
+                            if (!isDuplicate) {
+                                const maxId = existing.pins.length > 0 ? Math.max(...existing.pins.map(p=>p.id)) : 0;
+                                np.id = maxId + 1;
+                                existing.pins.push(np);
+                                addedCount++;
+                            }
+                        }
                     } else {
                         blueprints.push(incoming);
                     }
