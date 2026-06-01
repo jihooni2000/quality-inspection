@@ -298,7 +298,6 @@
             <button onclick="document.getElementById('import-json-input').click()" title="데이터 불러오기/덮어쓰기" style="padding:5px 10px; background:#7a4200; color:#ffcc80; border:none; border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">📂 불러오기</button>
             <input type="file" id="import-json-input" accept=".json" style="display:none" onchange="importJSON(event)">
             <button onclick="openDeleteDataModal()" style="padding:5px 10px; background:rgba(255,69,69,0.12); color:var(--danger); border:1px solid rgba(255,69,69,0.3); border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">🗑️ 삭제</button>
-            <button onclick="openOptimizeModal()" style="padding:5px 10px; background:rgba(52,199,89,0.12); color:#34c759; border:1px solid rgba(52,199,89,0.3); border-radius:7px; font-size:var(--fs-small); font-weight:600; cursor:pointer; white-space:nowrap; font-family:'IBM Plex Sans KR',sans-serif;">🗜️ 사진최적화</button>
             <span id="db-status" style="font-size:var(--fs-small); color:var(--success); font-family:'JetBrains Mono',monospace; font-weight:600; min-width:60px; text-align:right;">⏳</span>
         </div>
     </header>
@@ -327,26 +326,6 @@
     </main>
 
     <div class="modal-overlay" id="modal-overlay" onclick="closeAllModals()"></div>
-
-    <!-- 사진 최적화 모달 -->
-    <div id="optimize-modal" style="display:none; position:fixed; inset:0; z-index:9000; justify-content:center; align-items:center; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);">
-        <div style="background:var(--surface); border:1px solid var(--border-bright); border-radius:18px; padding:28px 24px; width:90%; max-width:420px; box-shadow:0 16px 60px rgba(0,0,0,0.5);">
-            <h3 style="margin:0 0 8px; font-size:var(--fs-title); color:#34c759; font-family:'IBM Plex Sans KR',sans-serif;">🗜️ 사진 최적화</h3>
-            <p style="margin:0 0 6px; font-size:var(--fs-sub); color:var(--text-secondary);">저장된 모든 사진을 <b style="color:#34c759;">800px / 65%</b>로 재압축합니다.</p>
-            <p style="margin:0 0 20px; font-size:var(--fs-small); color:var(--text-muted);">백업 파일 용량이 대폭 줄어듭니다. 사진 화질은 다소 낮아질 수 있습니다.</p>
-            <!-- 진행률 -->
-            <div id="optimize-progress-wrap" style="display:none; margin-bottom:20px;">
-                <div style="font-size:var(--fs-sub); color:var(--text-secondary); margin-bottom:8px; font-family:'IBM Plex Sans KR',sans-serif;" id="optimize-progress-text">처리 중...</div>
-                <div style="background:var(--surface2); border-radius:20px; height:10px; overflow:hidden;">
-                    <div id="optimize-progress-bar" style="height:100%; width:0%; background:#34c759; border-radius:20px; transition:width 0.2s;"></div>
-                </div>
-            </div>
-            <div id="optimize-btns">
-                <button onclick="startOptimize()" style="width:100%; padding:15px; margin-bottom:10px; background:rgba(52,199,89,0.15); border:1px solid rgba(52,199,89,0.4); border-radius:12px; cursor:pointer; font-size:var(--fs-sub); font-weight:700; color:#34c759; font-family:'IBM Plex Sans KR',sans-serif;">🗜️ 최적화 시작</button>
-                <button onclick="closeOptimizeModal()" style="width:100%; padding:12px; background:var(--surface3); border:1px solid var(--border-bright); border-radius:10px; font-size:var(--fs-sub); font-weight:600; cursor:pointer; color:var(--text-secondary); font-family:'IBM Plex Sans KR',sans-serif;">취소</button>
-            </div>
-        </div>
-    </div>
 
     <!-- 데이터 삭제 선택 모달 -->
     <div id="delete-data-modal" style="display:none; position:fixed; inset:0; z-index:9000; justify-content:center; align-items:center; display:none; background:rgba(0,0,0,0.7); backdrop-filter:blur(4px);">
@@ -472,23 +451,44 @@
     </div>
 
     <script>
-        // ── 데이터 저장소: CacheStorage (PWA에서 절대 초기화 안 됨) ──
-        const DATA_CACHE = 'inspection-data-v1';
-        const DATA_KEY   = 'blueprints-data';
-
-        let db = null; // 하위 호환성 유지용 (null 허용)
-        let _pendingSave = false;
+        let db;
+        const request = indexedDB.open("InspectionDB", 2);
+        request.onupgradeneeded = e => {
+            const d = e.target.result;
+            if (!d.objectStoreNames.contains("blueprints")) {
+                d.createObjectStore("blueprints", { autoIncrement: true });
+            }
+        };
+        request.onsuccess = e => {
+            db = e.target.result;
+            // 스토어가 실제로 존재하는지 한 번 더 확인
+            if (!db.objectStoreNames.contains("blueprints")) {
+                db.close();
+                // 버전을 하나 더 올려서 스토어 강제 생성
+                const fix = indexedDB.open("InspectionDB", db.version + 1);
+                fix.onupgradeneeded = ev => {
+                    ev.target.result.createObjectStore("blueprints", { autoIncrement: true });
+                };
+                fix.onsuccess = ev => { db = ev.target.result; document.getElementById('db-status').innerText = ""; loadAllData(); };
+                fix.onerror   = ev => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; console.error(ev.target.error); };
+            } else {
+                document.getElementById('db-status').innerText = "";
+                loadAllData();
+            }
+        };
+        request.onerror = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; console.error("IndexedDB 오류:", e.target.error); };
 
         let blueprints = []; let activeIdx = -1; let currentPinId = null; let uploadTarget = 'before';
-        let movingPinId = null;
-        let isDraggingPin = false;
-
+        let movingPinId = null; // 이동 중인 핀 ID
+        let isDraggingPin = false; // 드래그 중 도면 클릭 차단용
+        // 공정 목록 — localStorage에서 불러오기 (없으면 기본값)
         function getProcesses() {
             try { const s = localStorage.getItem('processes'); return s ? JSON.parse(s) : ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; } catch(e) { return ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; }
         }
         function saveProcesses(arr) { localStorage.setItem('processes', JSON.stringify(arr)); }
 
         function getToday() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
+        // 날짜 서식 통일: 2026.5.7 또는 2026.05.07 → 2026-05-07
         function normalizeDate(d) {
             if (!d) return '';
             const parts = d.replace(/\./g, '-').split('-');
@@ -496,6 +496,8 @@
             return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
         }
 
+
+        // ── 현장명 인라인 편집 ──
         function startEditSiteName() {
             const disp  = document.getElementById('site-name-display');
             const input = document.getElementById('site-name-input');
@@ -513,69 +515,40 @@
             disp.style.display  = 'inline';
             input.style.display = 'none';
         }
+        // 앱 시작 시 저장된 현장명 복원
         (function() {
             const saved = localStorage.getItem('siteName');
             if (saved) document.getElementById('site-name-display').innerText = saved;
         })();
-
-        // ── CacheStorage 저장/로드 ──
-        async function loadAllData() {
-            try {
-                const cache = await caches.open(DATA_CACHE);
-                const resp  = await cache.match(DATA_KEY);
-                if (resp) {
-                    const data = await resp.json();
-                    blueprints = data.blueprints || [];
-                    console.log('✅ 데이터 로드:', blueprints.length, '개 도면');
-                } else {
-                    blueprints = [];
-                    console.log('📭 저장된 데이터 없음');
-                }
-            } catch(e) {
-                console.error('로드 실패:', e);
-                blueprints = [];
-            }
-            renderTree();
+        function loadAllData() {
+            const transaction = db.transaction(["blueprints"], "readonly");
+            transaction.objectStore("blueprints").getAll().onsuccess = e => { blueprints = e.target.result; renderTree(); };
         }
 
         let _saveTimer = null;
-
         async function syncDB() {
-            _pendingSave = true;
-            document.getElementById('db-status').innerText = "💾 저장 중...";
-            try {
-                const cache = await caches.open(DATA_CACHE);
-                const json  = JSON.stringify({ blueprints });
-                const resp  = new Response(json, { headers: { 'Content-Type': 'application/json' } });
-                await cache.put(DATA_KEY, resp);
-                const el = document.getElementById('db-status');
-                el.innerText = "💾 저장됨";
-                _pendingSave = false;
-                clearTimeout(_saveTimer);
-                _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
-                console.log('✅ 저장 완료:', blueprints.length, '개 도면');
-            } catch(e) {
-                _pendingSave = false;
-                document.getElementById('db-status').innerText = "⚠️ 저장오류";
-                console.error('저장 실패:', e);
-                throw e;
-            }
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(["blueprints"], "readwrite");
+                const store = transaction.objectStore("blueprints");
+
+                transaction.oncomplete = () => {
+                    // 💾 저장됨 표시 — 2초 후 자동으로 사라짐
+                    const el = document.getElementById('db-status');
+                    el.innerText = "💾 저장됨";
+                    clearTimeout(_saveTimer);
+                    _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
+                    resolve();
+                };
+                transaction.onerror   = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; reject(e.target.error); };
+                transaction.onabort   = e => { document.getElementById('db-status').innerText = "⚠️ 저장오류"; reject(e.target.error); };
+
+                const clearReq = store.clear();
+                clearReq.onsuccess = () => {
+                    blueprints.forEach(bp => store.add(bp));
+                };
+                clearReq.onerror = e => reject(e.target.error);
+            });
         }
-
-        async function syncDBChunked() {
-            await syncDB();
-        }
-
-        // 앱 시작 시 데이터 로드
-        loadAllData();
-
-        // 앱 종료 전 저장 완료 보장
-        window.addEventListener('beforeunload', e => {
-            if (_pendingSave) {
-                e.preventDefault();
-                e.returnValue = '저장 중입니다. 잠시 후 닫아주세요.';
-            }
-        });
 
         // 핀 카운트 집계 헬퍼
         function countPins(bpList) {
@@ -1575,25 +1548,20 @@
         }
 
         async function saveData() {
-            if (activeIdx === -1 || currentPinId === null) return;
             const p = blueprints[activeIdx].pins.find(x => x.id == currentPinId);
-            if (!p) return;
             p.beforeNote = document.getElementById('note-before').value;
             p.afterNote  = document.getElementById('note-after').value;
+            // 조치 내용(텍스트)만 입력되어도 조치일 자동 기록
+            // (사진 업로드 시에는 handlePhotoUpload에서 이미 처리)
             if (p.afterNote && !p.afterDate) {
-                p.afterDate = getToday();
+                const today = new Date();
+                p.afterDate = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
             }
+            // 조치 내용과 사진 모두 지워지면 조치일도 초기화
             if (!p.afterNote && (!p.afterPhotos || p.afterPhotos.length === 0)) {
                 p.afterDate = '';
             }
-            try {
-                await syncDB();
-                renderPins(); renderRightList(); openViewModal(currentPinId);
-            } catch(err) {
-                console.error('saveData 오류:', err);
-                document.getElementById('db-status').innerText = '⚠️ 저장오류';
-                alert('저장 중 오류가 발생했습니다.\n' + (err && err.message ? err.message : String(err)));
-            }
+            await syncDB(); renderPins(); renderRightList(); openViewModal(currentPinId);
         }
 
         function renderRightList() {
@@ -1742,66 +1710,6 @@
             alert('모든 데이터가 삭제되었습니다.');
         }
 
-        // ── 사진 최적화 ──
-        function openOptimizeModal() {
-            // 전체 사진 수 카운트
-            let total = 0;
-            blueprints.forEach(bp => bp.pins.forEach(p => {
-                total += (p.beforePhotos||[]).length + (p.afterPhotos||[]).length;
-            }));
-            if (total === 0) { alert('저장된 사진이 없습니다.'); return; }
-            document.getElementById('optimize-progress-wrap').style.display = 'none';
-            document.getElementById('optimize-btns').style.display = 'block';
-            document.getElementById('optimize-progress-bar').style.width = '0%';
-            document.getElementById('optimize-modal').style.display = 'flex';
-        }
-        function closeOptimizeModal() {
-            document.getElementById('optimize-modal').style.display = 'none';
-        }
-
-        async function startOptimize() {
-            document.getElementById('optimize-btns').style.display = 'none';
-            document.getElementById('optimize-progress-wrap').style.display = 'block';
-
-            // 전체 사진 목록 수집
-            const tasks = [];
-            blueprints.forEach((bp, bIdx) => {
-                bp.pins.forEach((pin, pIdx) => {
-                    (pin.beforePhotos||[]).forEach((src, i) => tasks.push({ bIdx, pIdx, type:'before', i, src }));
-                    (pin.afterPhotos ||[]).forEach((src, i) => tasks.push({ bIdx, pIdx, type:'after',  i, src }));
-                });
-            });
-
-            const total = tasks.length;
-            let done = 0;
-
-            for (const task of tasks) {
-                try {
-                    const optimized = await resizeImage(task.src, 800, 800, 0.65);
-                    const pin = blueprints[task.bIdx].pins[task.pIdx];
-                    if (task.type === 'before') pin.beforePhotos[task.i] = optimized;
-                    else                        pin.afterPhotos[task.i]  = optimized;
-                } catch(e) {
-                    console.warn('사진 최적화 실패:', e);
-                }
-                done++;
-                const pct = Math.round(done / total * 100);
-                document.getElementById('optimize-progress-bar').style.width = pct + '%';
-                document.getElementById('optimize-progress-text').innerText = `처리 중... ${done} / ${total} (${pct}%)`;
-                // UI 업데이트를 위한 비동기 양보
-                if (done % 5 === 0) await new Promise(r => setTimeout(r, 0));
-            }
-
-            document.getElementById('optimize-progress-text').innerText = '저장 중...';
-            try {
-                await syncDBChunked();
-                closeOptimizeModal();
-                alert(`✅ 최적화 완료!\n총 ${total}장의 사진이 압축되었습니다.\n백업을 다시 받으시면 용량이 줄어든 파일을 받을 수 있습니다.`);
-            } catch(err) {
-                alert('저장 중 오류가 발생했습니다.\n' + (err && err.message ? err.message : String(err)));
-            }
-        }
-
         function closeAllModals() {
             // 모달 닫을 때 입력값이 하나도 없는 핀이면 자동 삭제
             if (activeIdx !== -1 && currentPinId !== null) {
@@ -1880,16 +1788,20 @@
             );
 
             if (choice) {
+                // 덮어쓰기
                 blueprints = parsed.blueprints;
                 if (parsed.siteName) {
                     localStorage.setItem('siteName', parsed.siteName);
                     document.getElementById('site-name-display').innerText = parsed.siteName;
                 }
             } else {
+                // 병합 — 동/층/공간명이 같은 경우 핀 합치기 (완전 동일 핀은 중복 추가 안 함)
                 for (const incoming of parsed.blueprints) {
                     const existing = blueprints.find(b => b.dong === incoming.dong && b.floor === incoming.floor && b.room === incoming.room);
                     if (existing) {
+                        let addedCount = 0;
                         for (const np of incoming.pins) {
+                            // 위치(x,y) + 공정 + 실명 + 점검내용 + 조치내용이 모두 같으면 중복으로 판단
                             const isDuplicate = existing.pins.some(ep =>
                                 Math.abs(ep.x - np.x) < 0.01 &&
                                 Math.abs(ep.y - np.y) < 0.01 &&
@@ -1902,6 +1814,7 @@
                                 const maxId = existing.pins.length > 0 ? Math.max(...existing.pins.map(p=>p.id)) : 0;
                                 np.id = maxId + 1;
                                 existing.pins.push(np);
+                                addedCount++;
                             }
                         }
                     } else {
@@ -1909,20 +1822,12 @@
                     }
                 }
             }
-
-            try {
-                // 대용량 데이터는 청크 방식으로 저장 (타임아웃 방지)
-                await syncDBChunked();
-                activeIdx = -1;
-                document.getElementById('canvas-container').style.display = 'none';
-                document.getElementById('pin-summary-list').innerHTML = '';
-                renderTree();
-                alert('✅ 불러오기 완료! 앱을 닫았다 열어도 데이터가 유지됩니다.');
-            } catch(err) {
-                console.error('불러오기 저장 오류:', err);
-                document.getElementById('db-status').innerText = "⚠️ 저장오류";
-                alert('불러오기 중 저장 오류가 발생했습니다.\n' + (err && err.message ? err.message : String(err)));
-            }
+            await syncDB();
+            activeIdx = -1;
+            document.getElementById('canvas-container').style.display = 'none';
+            document.getElementById('pin-summary-list').innerHTML = '';
+            renderTree();
+            alert('✅ 불러오기 완료!');
         }
 
         // ── 엑셀 내보내기 (사진 포함, A4 가로, 지정 양식) ──
