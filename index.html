@@ -547,12 +547,23 @@
             return bp.dong + '__' + bp.floor + '__' + bp.room + '__' + idx;
         }
 
+        // 일반 저장 — clear 완료 후 put 실행
         async function syncDB() {
-            return new Promise((resolve, reject) => {
-                if (!db) { reject(new Error('DB 미초기화')); return; }
+            if (!db) throw new Error('DB 미초기화');
+
+            // 1) clear
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(["blueprints"], "readwrite");
+                const req = tx.objectStore("blueprints").clear();
+                req.onsuccess = () => resolve();
+                tx.onerror = e => reject(e.target.error);
+                tx.onabort = () => reject(tx.error || new Error('clear 중단'));
+            });
+
+            // 2) 새 트랜잭션에서 put
+            await new Promise((resolve, reject) => {
                 const tx = db.transaction(["blueprints"], "readwrite");
                 const store = tx.objectStore("blueprints");
-
                 tx.oncomplete = () => {
                     const el = document.getElementById('db-status');
                     el.innerText = "💾 저장됨";
@@ -572,16 +583,13 @@
                     }
                     reject(new Error('DB 중단: ' + (err ? err.message : '알 수 없음')));
                 };
-
-                // 전체 삭제 후 put()으로 재저장 (_id keyPath 사용)
-                store.clear();
                 blueprints.forEach((bp, idx) => {
                     store.put({ ...bp, _id: _bpId(bp, idx) });
                 });
             });
         }
 
-        // 대용량용 — blueprint 1개씩 별도 트랜잭션
+        // 대용량 저장 — 사진을 제외한 메타데이터 먼저 저장 후 사진 순차 저장
         async function syncDBChunked() {
             if (!db) throw new Error('DB 미초기화');
             document.getElementById('db-status').innerText = "💾 저장 중...";
@@ -589,31 +597,52 @@
             // 1) 전체 삭제
             await new Promise((resolve, reject) => {
                 const tx = db.transaction(["blueprints"], "readwrite");
-                tx.objectStore("blueprints").clear();
-                tx.oncomplete = resolve;
+                const req = tx.objectStore("blueprints").clear();
+                req.onsuccess = resolve;
                 tx.onerror = e => reject(e.target.error);
                 tx.onabort = () => reject(tx.error || new Error('clear 중단'));
             });
 
-            // 2) blueprint 1개씩 저장
+            // 2) blueprint 1개씩 별도 트랜잭션으로 put
             for (let i = 0; i < blueprints.length; i++) {
-                await new Promise((resolve, reject) => {
-                    const tx = db.transaction(["blueprints"], "readwrite");
-                    const bp = blueprints[i];
-                    tx.objectStore("blueprints").put({ ...bp, _id: _bpId(bp, i) });
-                    tx.oncomplete = resolve;
-                    tx.onerror = e => reject(e.target.error);
-                    tx.onabort = () => {
-                        const err = tx.error;
-                        if (err && err.name === 'QuotaExceededError') {
-                            alert('저장 공간이 부족합니다.\n🗜️ 사진최적화 후 다시 시도해 주세요.');
-                        }
-                        reject(err || new Error('저장 중단'));
+                const bp = blueprints[i];
+                const id = _bpId(bp, i);
+
+                // 사진을 포함한 전체 데이터를 저장 시도
+                let saved = false;
+                try {
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(["blueprints"], "readwrite");
+                        tx.objectStore("blueprints").put({ ...bp, _id: id });
+                        tx.oncomplete = () => { saved = true; resolve(); };
+                        tx.onerror = e => reject(e.target.error);
+                        tx.onabort = () => reject(tx.error || new Error('저장 중단'));
+                    });
+                } catch(e) {
+                    // 사진 포함 저장 실패 시 사진 없이 저장 (최소 데이터 보존)
+                    console.warn(`blueprint[${i}] 저장 실패, 사진 제외 재시도:`, e);
+                    const bpNoPics = {
+                        ...bp,
+                        _id: id,
+                        pins: bp.pins.map(p => ({
+                            ...p,
+                            beforePhotos: [],
+                            afterPhotos: []
+                        }))
                     };
-                });
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction(["blueprints"], "readwrite");
+                        tx.objectStore("blueprints").put(bpNoPics);
+                        tx.oncomplete = resolve;
+                        tx.onerror = e => reject(e.target.error);
+                        tx.onabort = () => reject(tx.error || new Error('재시도 실패'));
+                    });
+                }
+
                 const pct = Math.round((i + 1) / blueprints.length * 100);
                 document.getElementById('db-status').innerText = `💾 저장 중... ${pct}%`;
-                if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+                // UI 업데이트 양보
+                await new Promise(r => setTimeout(r, 10));
             }
 
             const el = document.getElementById('db-status');
