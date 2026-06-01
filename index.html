@@ -473,14 +473,14 @@
 
     <script>
         let db;
-        const request = indexedDB.open("InspectionDB", 3);
+        const request = indexedDB.open("InspectionDB", 4);
         request.onupgradeneeded = e => {
             const d = e.target.result;
-            // v3: keyPath 기반 스토어로 교체 (put() 가능)
-            if (d.objectStoreNames.contains("blueprints")) {
-                d.deleteObjectStore("blueprints");
-            }
+            // 기존 스토어 삭제
+            ['blueprints','photos'].forEach(s => { if (d.objectStoreNames.contains(s)) d.deleteObjectStore(s); });
+            // v4: blueprints (메타데이터만), photos (사진 분리 저장)
             d.createObjectStore("blueprints", { keyPath: "_id" });
+            d.createObjectStore("photos",     { keyPath: "_pid" }); // _pid: "bpId__pinId__type__idx"
         };
         request.onsuccess = e => {
             db = e.target.result;
@@ -490,16 +490,14 @@
         request.onerror = e => { document.getElementById('db-status').innerText = "⚠️ DB오류"; console.error("IndexedDB 오류:", e.target.error); };
 
         let blueprints = []; let activeIdx = -1; let currentPinId = null; let uploadTarget = 'before';
-        let movingPinId = null; // 이동 중인 핀 ID
-        let isDraggingPin = false; // 드래그 중 도면 클릭 차단용
-        // 공정 목록 — localStorage에서 불러오기 (없으면 기본값)
+        let movingPinId = null;
+        let isDraggingPin = false;
         function getProcesses() {
             try { const s = localStorage.getItem('processes'); return s ? JSON.parse(s) : ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; } catch(e) { return ["도배","타일","전기","목공","도장","가구","바닥재","기타"]; }
         }
         function saveProcesses(arr) { localStorage.setItem('processes', JSON.stringify(arr)); }
 
         function getToday() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
-        // 날짜 서식 통일: 2026.5.7 또는 2026.05.07 → 2026-05-07
         function normalizeDate(d) {
             if (!d) return '';
             const parts = d.replace(/\./g, '-').split('-');
@@ -507,8 +505,6 @@
             return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
         }
 
-
-        // ── 현장명 인라인 편집 ──
         function startEditSiteName() {
             const disp  = document.getElementById('site-name-display');
             const input = document.getElementById('site-name-input');
@@ -526,129 +522,123 @@
             disp.style.display  = 'inline';
             input.style.display = 'none';
         }
-        // 앱 시작 시 저장된 현장명 복원
         (function() {
             const saved = localStorage.getItem('siteName');
             if (saved) document.getElementById('site-name-display').innerText = saved;
         })();
-        function loadAllData() {
-            const transaction = db.transaction(["blueprints"], "readonly");
-            transaction.objectStore("blueprints").getAll().onsuccess = e => {
-                // _id 필드 제거 후 사용
-                blueprints = e.target.result.map(bp => { const b = {...bp}; delete b._id; return b; });
-                renderTree();
-            };
+
+        // ── ID 헬퍼 ──
+        function _bpId(bp, idx) { return `${bp.dong}__${bp.floor}__${bp.room}__${idx}`; }
+        function _pid(bpId, pinId, type, idx) { return `${bpId}__${pinId}__${type}__${idx}`; }
+
+        // ── 로드: blueprints + photos 합치기 ──
+        async function loadAllData() {
+            return new Promise(resolve => {
+                const tx = db.transaction(["blueprints","photos"], "readonly");
+                let bpList = [], photoMap = {};
+
+                tx.objectStore("blueprints").getAll().onsuccess = e => {
+                    bpList = e.target.result.map(bp => { const b={...bp}; delete b._id; return b; });
+                };
+                tx.objectStore("photos").getAll().onsuccess = e => {
+                    e.target.result.forEach(p => { photoMap[p._pid] = p.data; });
+                };
+                tx.oncomplete = () => {
+                    // 사진을 각 핀에 복원
+                    bpList.forEach((bp, bIdx) => {
+                        const bId = _bpId(bp, bIdx);
+                        bp.pins.forEach(pin => {
+                            pin.beforePhotos = [];
+                            pin.afterPhotos  = [];
+                            let i = 0;
+                            while (photoMap[_pid(bId, pin.id, 'before', i)] !== undefined) {
+                                pin.beforePhotos.push(photoMap[_pid(bId, pin.id, 'before', i)]); i++;
+                            }
+                            i = 0;
+                            while (photoMap[_pid(bId, pin.id, 'after', i)] !== undefined) {
+                                pin.afterPhotos.push(photoMap[_pid(bId, pin.id, 'after', i)]); i++;
+                            }
+                        });
+                    });
+                    blueprints = bpList;
+                    renderTree();
+                    resolve();
+                };
+            });
         }
 
         let _saveTimer = null;
 
-        // _id 생성 헬퍼
-        function _bpId(bp, idx) {
-            return bp.dong + '__' + bp.floor + '__' + bp.room + '__' + idx;
-        }
-
-        // 일반 저장 — clear 완료 후 put 실행
+        // ── 저장: blueprints 메타 + photos 분리 ──
         async function syncDB() {
             if (!db) throw new Error('DB 미초기화');
 
-            // 1) clear
-            await new Promise((resolve, reject) => {
-                const tx = db.transaction(["blueprints"], "readwrite");
-                const req = tx.objectStore("blueprints").clear();
-                req.onsuccess = () => resolve();
-                tx.onerror = e => reject(e.target.error);
-                tx.onabort = () => reject(tx.error || new Error('clear 중단'));
+            // blueprints: 사진 제외한 메타데이터만
+            const bpMeta = blueprints.map((bp, idx) => {
+                const b = {...bp, _id: _bpId(bp, idx)};
+                b.pins = bp.pins.map(p => ({
+                    ...p, beforePhotos: [], afterPhotos: []
+                }));
+                return b;
             });
 
-            // 2) 새 트랜잭션에서 put
+            // photos: 사진 레코드 목록
+            const photoRecords = [];
+            blueprints.forEach((bp, bIdx) => {
+                const bId = _bpId(bp, bIdx);
+                bp.pins.forEach(pin => {
+                    (pin.beforePhotos||[]).forEach((data, i) => photoRecords.push({ _pid: _pid(bId, pin.id, 'before', i), data }));
+                    (pin.afterPhotos ||[]).forEach((data, i) => photoRecords.push({ _pid: _pid(bId, pin.id, 'after',  i), data }));
+                });
+            });
+
+            // 1) blueprints 저장 (작은 데이터 — 빠름)
             await new Promise((resolve, reject) => {
                 const tx = db.transaction(["blueprints"], "readwrite");
                 const store = tx.objectStore("blueprints");
-                tx.oncomplete = () => {
-                    const el = document.getElementById('db-status');
-                    el.innerText = "💾 저장됨";
-                    clearTimeout(_saveTimer);
-                    _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
-                    resolve();
-                };
-                tx.onerror = e => {
-                    document.getElementById('db-status').innerText = "⚠️ 저장오류";
-                    reject(new Error('DB 오류: ' + (e.target.error ? e.target.error.message : '알 수 없음')));
-                };
-                tx.onabort = () => {
-                    const err = tx.error;
-                    document.getElementById('db-status').innerText = "⚠️ 저장오류";
-                    if (err && err.name === 'QuotaExceededError') {
-                        alert('저장 공간이 부족합니다.\n🗜️ 사진최적화 후 다시 시도해 주세요.');
-                    }
-                    reject(new Error('DB 중단: ' + (err ? err.message : '알 수 없음')));
-                };
-                blueprints.forEach((bp, idx) => {
-                    store.put({ ...bp, _id: _bpId(bp, idx) });
-                });
-            });
-        }
-
-        // 대용량 저장 — 사진을 제외한 메타데이터 먼저 저장 후 사진 순차 저장
-        async function syncDBChunked() {
-            if (!db) throw new Error('DB 미초기화');
-            document.getElementById('db-status').innerText = "💾 저장 중...";
-
-            // 1) 전체 삭제
-            await new Promise((resolve, reject) => {
-                const tx = db.transaction(["blueprints"], "readwrite");
-                const req = tx.objectStore("blueprints").clear();
-                req.onsuccess = resolve;
+                tx.oncomplete = resolve;
                 tx.onerror = e => reject(e.target.error);
-                tx.onabort = () => reject(tx.error || new Error('clear 중단'));
+                tx.onabort = () => reject(tx.error || new Error('bp 저장 중단'));
+                store.clear();
+                bpMeta.forEach(b => store.put(b));
             });
 
-            // 2) blueprint 1개씩 별도 트랜잭션으로 put
-            for (let i = 0; i < blueprints.length; i++) {
-                const bp = blueprints[i];
-                const id = _bpId(bp, i);
+            // 2) photos 저장 — 1개씩 별도 트랜잭션 (대용량 안전)
+            // 먼저 기존 사진 삭제
+            await new Promise((resolve, reject) => {
+                const tx = db.transaction(["photos"], "readwrite");
+                tx.objectStore("photos").clear();
+                tx.oncomplete = resolve;
+                tx.onerror = e => reject(e.target.error);
+                tx.onabort = () => reject(tx.error || new Error('photos clear 중단'));
+            });
 
-                // 사진을 포함한 전체 데이터를 저장 시도
-                let saved = false;
-                try {
-                    await new Promise((resolve, reject) => {
-                        const tx = db.transaction(["blueprints"], "readwrite");
-                        tx.objectStore("blueprints").put({ ...bp, _id: id });
-                        tx.oncomplete = () => { saved = true; resolve(); };
-                        tx.onerror = e => reject(e.target.error);
-                        tx.onabort = () => reject(tx.error || new Error('저장 중단'));
-                    });
-                } catch(e) {
-                    // 사진 포함 저장 실패 시 사진 없이 저장 (최소 데이터 보존)
-                    console.warn(`blueprint[${i}] 저장 실패, 사진 제외 재시도:`, e);
-                    const bpNoPics = {
-                        ...bp,
-                        _id: id,
-                        pins: bp.pins.map(p => ({
-                            ...p,
-                            beforePhotos: [],
-                            afterPhotos: []
-                        }))
+            // 사진 1장씩 저장
+            for (let i = 0; i < photoRecords.length; i++) {
+                await new Promise((resolve, reject) => {
+                    const tx = db.transaction(["photos"], "readwrite");
+                    tx.objectStore("photos").put(photoRecords[i]);
+                    tx.oncomplete = resolve;
+                    tx.onerror = e => reject(e.target.error);
+                    tx.onabort = () => {
+                        const err = tx.error;
+                        if (err && err.name === 'QuotaExceededError') alert('저장 공간 부족. 🗜️ 사진최적화 후 재시도해 주세요.');
+                        reject(err || new Error('사진 저장 중단'));
                     };
-                    await new Promise((resolve, reject) => {
-                        const tx = db.transaction(["blueprints"], "readwrite");
-                        tx.objectStore("blueprints").put(bpNoPics);
-                        tx.oncomplete = resolve;
-                        tx.onerror = e => reject(e.target.error);
-                        tx.onabort = () => reject(tx.error || new Error('재시도 실패'));
-                    });
-                }
-
-                const pct = Math.round((i + 1) / blueprints.length * 100);
-                document.getElementById('db-status').innerText = `💾 저장 중... ${pct}%`;
-                // UI 업데이트 양보
-                await new Promise(r => setTimeout(r, 10));
+                });
+                if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
             }
 
             const el = document.getElementById('db-status');
             el.innerText = "💾 저장됨";
             clearTimeout(_saveTimer);
             _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
+        }
+
+        // 대용량도 syncDB와 동일 (이미 분리 저장이므로)
+        async function syncDBChunked() {
+            document.getElementById('db-status').innerText = "💾 저장 중...";
+            await syncDB();
         }
 
         // 핀 카운트 집계 헬퍼
