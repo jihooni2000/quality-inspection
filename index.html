@@ -485,9 +485,30 @@
         request.onsuccess = e => {
             db = e.target.result;
             document.getElementById('db-status').innerText = "";
+
+            // 영구 저장소 권한 요청 — PWA 단독 실행 시 데이터 보호 핵심
+            if (navigator.storage && navigator.storage.persist) {
+                navigator.storage.persist().then(granted => {
+                    console.log('영구 저장소:', granted ? '✅ 허용' : '⚠️ 미허용');
+                    if (!granted) {
+                        document.getElementById('db-status').innerText = "⚠️ 저장공간 미보호";
+                        setTimeout(() => { document.getElementById('db-status').innerText = ""; }, 4000);
+                    }
+                });
+            }
+
             loadAllData();
         };
         request.onerror = e => { document.getElementById('db-status').innerText = "⚠️ DB오류"; console.error("IndexedDB 오류:", e.target.error); };
+
+        // 앱 종료 전 저장 완료 보장
+        let _pendingSave = false;
+        window.addEventListener('beforeunload', e => {
+            if (_pendingSave) {
+                e.preventDefault();
+                e.returnValue = '저장 중입니다. 잠시 후 닫아주세요.';
+            }
+        });
 
         let blueprints = []; let activeIdx = -1; let currentPinId = null; let uploadTarget = 'before';
         let movingPinId = null;
@@ -572,6 +593,8 @@
         // ── 저장: blueprints 메타 + photos 분리 ──
         async function syncDB() {
             if (!db) throw new Error('DB 미초기화');
+            _pendingSave = true;
+            document.getElementById('db-status').innerText = "💾 저장 중...";
 
             // blueprints: 사진 제외한 메타데이터만
             const bpMeta = blueprints.map((bp, idx) => {
@@ -631,6 +654,7 @@
 
             const el = document.getElementById('db-status');
             el.innerText = "💾 저장됨";
+            _pendingSave = false;
             clearTimeout(_saveTimer);
             _saveTimer = setTimeout(() => { el.innerText = ""; }, 2000);
         }
