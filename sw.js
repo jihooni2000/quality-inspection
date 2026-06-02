@@ -1,4 +1,4 @@
-const CACHE_NAME = 'janghak-punchlist-202605180701';
+const CACHE_NAME = 'janghak-punchlist-202606020040';
 const ASSETS = [
   '/quality-inspection/',
   '/quality-inspection/index.html',
