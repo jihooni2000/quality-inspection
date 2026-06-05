@@ -287,7 +287,7 @@
                   style="font-size:var(--fs-sub); color:var(--accent); cursor:pointer; white-space:nowrap; padding:3px 10px; border-radius:6px; border:1px solid rgba(26,140,255,0.35); background:rgba(26,140,255,0.08);">
                 ✏️ 현장명
             </span>
-            <span style="color:rgba(255,255,255,0.35); font-size:12px; font-family:monospace; border:1px solid rgba(255,255,255,0.15); padding:2px 7px; border-radius:5px; white-space:nowrap;">v26.06.12</span>
+            <span style="color:rgba(255,255,255,0.35); font-size:12px; font-family:monospace; border:1px solid rgba(255,255,255,0.15); padding:2px 7px; border-radius:5px; white-space:nowrap;">v26.06.13</span>
             <input id="site-name-input" type="text" placeholder="현장명 입력"
                    onblur="finishEditSiteName()"
                    onkeydown="if(event.key==='Enter') this.blur()"
@@ -1796,39 +1796,61 @@
                     document.getElementById('site-name-display').innerText = parsed.siteName;
                 }
             } else {
-                // 병합 — 동/층/공간명이 같은 경우 핀 합치기 (완전 동일 핀은 중복 추가 안 함)
+                // 병합 — 동/층/공간명이 같은 경우 핀 합치기
                 for (const incoming of parsed.blueprints) {
-                    const existing = blueprints.find(b => b.dong === incoming.dong && b.floor === incoming.floor && b.room === incoming.room);
+                    const existing = blueprints.find(b =>
+                        b.dong  === incoming.dong &&
+                        b.floor === incoming.floor &&
+                        b.room  === incoming.room
+                    );
                     if (existing) {
-                        let addedCount = 0;
                         for (const np of incoming.pins) {
-                            // 위치(x,y) + 공정 + 실명 + 점검내용 + 조치내용이 모두 같으면 중복으로 판단
-                            const isDuplicate = existing.pins.some(ep =>
-                                Math.abs(ep.x - np.x) < 0.01 &&
-                                Math.abs(ep.y - np.y) < 0.01 &&
-                                (ep.process   || '') === (np.process   || '') &&
-                                (ep.roomName  || '') === (np.roomName  || '') &&
-                                (ep.beforeNote|| '') === (np.beforeNote|| '') &&
-                                (ep.afterNote || '') === (np.afterNote || '')
+                            // 위치(x,y)가 같은 핀 찾기 (같은 핀으로 판단)
+                            const samePin = existing.pins.find(ep =>
+                                Math.abs((ep.x || 0) - (np.x || 0)) < 0.1 &&
+                                Math.abs((ep.y || 0) - (np.y || 0)) < 0.1
                             );
-                            if (!isDuplicate) {
-                                const maxId = existing.pins.length > 0 ? Math.max(...existing.pins.map(p=>p.id)) : 0;
+                            if (samePin) {
+                                // ✅ 기존 핀 업데이트 — 새 데이터로 덮어쓰기
+                                // (빈 값이면 기존 값 유지)
+                                if (np.process)    samePin.process    = np.process;
+                                if (np.roomName)   samePin.roomName   = np.roomName;
+                                if (np.beforeNote) samePin.beforeNote = np.beforeNote;
+                                if (np.afterNote)  samePin.afterNote  = np.afterNote;
+                                if (np.beforeDate) samePin.beforeDate = np.beforeDate;
+                                if (np.afterDate)  samePin.afterDate  = np.afterDate;
+                                // 사진: 불러온 파일에 사진이 있으면 업데이트
+                                if (np.beforePhotos && np.beforePhotos.length > 0) samePin.beforePhotos = np.beforePhotos;
+                                if (np.afterPhotos  && np.afterPhotos.length  > 0) samePin.afterPhotos  = np.afterPhotos;
+                            } else {
+                                // ✅ 새 핀 추가
+                                const maxId = existing.pins.length > 0
+                                    ? Math.max(...existing.pins.map(p => p.id || 0))
+                                    : 0;
                                 np.id = maxId + 1;
-                                existing.pins.push(np);
-                                addedCount++;
+                                existing.pins.push({ ...np });
                             }
                         }
+                        // 도면 이미지가 없으면 불러온 파일 도면으로 보완
+                        if (!existing.src && incoming.src) existing.src = incoming.src;
                     } else {
-                        blueprints.push(incoming);
+                        // 새 공간 전체 추가
+                        blueprints.push({ ...incoming });
                     }
                 }
             }
-            await syncDB();
-            activeIdx = -1;
-            document.getElementById('canvas-container').style.display = 'none';
-            document.getElementById('pin-summary-list').innerHTML = '';
-            renderTree();
-            alert('✅ 불러오기 완료!');
+            try {
+                await syncDB();
+                activeIdx = -1;
+                document.getElementById('canvas-container').style.display = 'none';
+                document.getElementById('pin-summary-list').innerHTML = '';
+                renderTree();
+                renderRightList();
+                alert('✅ 불러오기 완료!');
+            } catch(err) {
+                console.error('불러오기 저장 오류:', err);
+                alert('저장 중 오류가 발생했습니다.\n' + (err && err.message ? err.message : String(err)));
+            }
         }
 
         // ── 엑셀 내보내기 (사진 포함, A4 가로, 지정 양식) ──
